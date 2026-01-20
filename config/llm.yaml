@@ -1,0 +1,47 @@
+# LLM Configuration
+# Edit this file to switch between LLM providers (Ollama, LM Studio, etc.)
+
+# Server connection settings
+server:
+  # Base URL for the LLM API
+  # Ollama default: http://localhost:11434
+  # LM Studio default: http://localhost:1234
+  url: "http://localhost:1234"
+
+  # Connection timeout in seconds
+  connect_timeout: 60.0
+
+  # Read timeout (null for no timeout, useful for streaming)
+  read_timeout: null
+
+# Model configuration
+models:
+  # Vision model for image analysis (job posting screenshots, resume images)
+  # LM Studio format: "publisher/model-name" (e.g., qwen/qwen3-vl-4b)
+  # Ollama format: "model:tag" (e.g., qwen3-vl:4b)
+  vision: "qwen/qwen3-vl-4b"
+
+  # Text model for analysis and comparison tasks
+  # Use the same vision model if no dedicated text model is loaded
+  text: "liquid/lfm2.5-1.2b"
+
+# API compatibility mode
+# Supported: "ollama" (native Ollama API), "openai" (OpenAI-compatible API)
+# LM Studio can use either "ollama" (if compatibility mode enabled) or "openai"
+api_mode: "openai"
+
+# Concurrent analysis settings
+analysis:
+  # Number of jobs to analyze in parallel
+  # M1 16GB with 4B model: 2-3 recommended
+  concurrency: 5
+
+# Provider-specific endpoints (usually don't need to change)
+endpoints:
+  ollama:
+    models: "/api/tags"
+    generate: "/api/generate"
+  openai:
+    models: "/v1/models"
+    completions: "/v1/chat/completions"
+
