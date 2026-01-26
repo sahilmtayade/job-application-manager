@@ -1,10 +1,119 @@
 # JAM - Job Application Manager
 
-A local-first CLI tool for managing, tracking, and analyzing job applications.
+A modern job application management system with AI-powered features, gamification, and comprehensive analytics. Combines a sophisticated web interface with powerful CLI capabilities for the ultimate job search experience.
 
-## Installation
+## Web Interface
 
-### Using Conda (Recommended)
+JAM features a modern, responsive web interface built with Next.js, React, and TypeScript. The web UI provides the complete job search management experience with AI-powered features, gamification, and comprehensive analytics.
+
+### Quick Start
+
+```bash
+# Development mode (hot reload)
+./scripts/start-dev.sh
+
+# Production mode (built)
+./scripts/start-prod.sh
+
+# API only
+./scripts/start-api.sh
+```
+
+Then open http://localhost:3000
+
+### Technology Stack
+
+- **Framework**: Next.js 16 with React 19
+- **Language**: TypeScript with strict configuration
+- **Styling**: Tailwind CSS with custom components
+- **UI Library**: Radix UI components
+- **Charts**: Recharts for analytics
+- **State Management**: React Query (TanStack Query)
+- **Theme**: Dark/light mode support
+
+### Pages & Navigation
+
+- **Dashboard** - Central hub with gamification, streak tracking, and activity overview
+- **Applications** - Main application management with table and Kanban board views
+- **Job Search** (β) - Automated job discovery across multiple platforms with AI scoring
+- **Job Fit** (β) - AI-powered resume/job compatibility analysis
+- **Companies** - Company management with alias and merge capabilities
+- **Analytics** - Comprehensive insights and statistics
+- **Goals** - Set and track daily/weekly application targets
+- **Settings** - Configuration management
+- **Banned** - Quick reference for companies and platforms to avoid
+
+### Core Features
+
+#### Application Management
+- **Dual View Modes**: Switch between table and Kanban board layouts
+- **Status Tracking**: 8 detailed statuses with visual indicators
+- **File Attachments**: Upload and manage application documents
+- **Notes System**: Add detailed notes with timestamps
+- **Event History**: Complete audit trail of application journey
+- **Bulk Operations**: Efficient multi-item management
+
+#### Analytics & Insights
+- **Dashboard Overview**: Real-time statistics and activity trends
+- **Funnel Analysis**: Track conversion through application stages
+- **Source Performance**: Success rates by job platform
+- **Temporal Insights**: Activity patterns and trends over time
+- **Response Rate Tracking**: Communication effectiveness metrics
+- **Visual Charts**: Interactive charts and progress visualizations
+
+#### Gamification & Motivation
+- **Streak Tracking**: Daily application streaks with risk warnings
+- **Achievement System**: Multiple achievement categories (applications, streaks, progress, time-based, combos)
+- **Goal Setting**: Daily and weekly application targets with visual progress
+- **Celebration Effects**: Confetti animations for milestones and achievements
+- **Progress Visualization**: Weekly comparisons and activity trends
+- **Motivational Dashboard**: Personalized job search journey tracking
+
+### AI-Powered Features (Beta)
+
+#### Job Fit Analyzer
+- **Resume Analysis**: Upload resume screenshots for compatibility checking
+- **Compatibility Scoring**: 0-100 match scores with detailed breakdowns
+- **Skills Gap Analysis**: Matched, missing, and bonus skills identification
+- **Scam Detection**: AI-powered risk assessment for job postings
+- **Experience Validation**: Check if requirements match your profile
+- **Actionable Recommendations**: Personalized improvement suggestions
+
+#### Automated Job Search
+- **Multi-Platform Integration**: LinkedIn, Indeed, Glassdoor, ZipRecruiter, Google, Bayt, BDJobs, Naukri
+- **Intelligent Filtering**: Entry-level detection, experience requirements, keyword matching
+- **AI Scoring**: LLM-based job compatibility analysis
+- **Bulk Operations**: Hide, apply, delete, and analyze multiple jobs
+- **Progress Tracking**: Real-time search progress with ETA
+- **Export Functionality**: Export filtered results to CSV
+
+### Smart Management
+
+#### Company Intelligence
+- **Duplicate Detection**: Automatic identification of duplicate companies
+- **Company Aliases**: Add alternate names for better matching
+- **Merge Functionality**: Combine duplicate company records
+- **Company History**: Track all interactions with specific companies
+
+#### Banned Lists
+- **Company Blacklist**: Maintain list of scam or problematic companies
+- **Platform Filtering**: Exclude low-quality job platforms
+- **Quick Reference**: Easy access to avoid wasting time on bad opportunities
+
+### Data & Privacy
+- **Local-First**: All data stored locally on your machine
+- **SQLite Database**: Fast, reliable local storage with ACID compliance
+- **Backup System**: Automated database backups with restore functionality
+- **No Cloud Dependencies**: Complete control over your sensitive information
+- **Bi-Directional Sync**: Seamless data sharing between web and CLI interfaces
+
+## CLI Interface
+
+The CLI provides powerful command-line functionality for automation, scripting, and quick operations. Ideal for power users who prefer terminal-based workflows.
+
+### Installation
+
+#### Using Conda (Recommended)
 
 ```bash
 # Create a new conda environment
@@ -17,13 +126,13 @@ conda activate jam
 pip install -e .
 ```
 
-### Using pip
+#### Using pip
 
 ```bash
 pip install -e .
 ```
 
-## Quick Start
+### Quick Start
 
 ```bash
 # Add a new application
@@ -46,26 +155,7 @@ jam stats
 jam stats trends --since 30d
 ```
 
-## Web UI
-
-JAM includes a modern web interface built with Next.js.
-
-### Quick Start
-
-```bash
-# Development mode (hot reload)
-./scripts/start-dev.sh
-
-# Production mode (built)
-./scripts/start-prod.sh
-
-# API only
-./scripts/start-api.sh
-```
-
-Then open http://localhost:3000
-
-## Commands
+## CLI Commands
 
 ### Applications
 
@@ -120,6 +210,15 @@ Then open http://localhost:3000
 | `jam backup` | Create timestamped backup |
 | `jam backup --list` | List available backups |
 | `jam backup --restore FILE` | Restore from backup |
+
+### CLI Advantages
+
+- **Scripting & Automation**: Perfect for automated workflows and cron jobs
+- **Quick Operations**: Fast terminal-based interactions
+- **Data Integration**: Easy integration with other tools and scripts
+- **Remote Access**: SSH-friendly for remote server usage
+- **Power User Features**: Advanced filtering and bulk operations
+- **Offline Usage**: Full functionality without web interface
 
 ## Application Statuses
 

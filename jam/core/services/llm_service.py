@@ -396,7 +396,7 @@ Important:
 - Note any notable achievements or metrics
 - Return ONLY valid JSON, no other text"""
 
-    # Prompt for extracting job requirements (Pass 2)
+# Prompt for extracting job requirements (Pass 2)
     JOB_REQUIREMENTS_PROMPT = """Extract the job requirements and details from this job posting image.
 Return ONLY a valid JSON object:
 
@@ -408,7 +408,8 @@ Return ONLY a valid JSON object:
   "preferred_skills": ["nice", "to", "have", "skills"],
   "years_experience_required": "X years or null",
   "requires_clearance": true/false,
-  "clearance_type": "Security clearance type if mentioned, else null",
+  "clearance_type": "Exact clearance mentioned (Secret/Top Secret/TS/SCI/TS/SCI/Confidential) or null",
+  "clearance_requirement_text": "Exact text from posting about clearance or null",
   "salary_range": "Salary if mentioned, else null",
   "location": "Location or Remote",
   "company_email_domain": "Email domain if visible (e.g., gmail.com, company.com)",
@@ -418,23 +419,40 @@ Return ONLY a valid JSON object:
   "red_flags_noticed": ["any", "suspicious", "elements"]
 }
 
+CRITICAL: For clearance detection, look for ANY of these terms:
+- "clearance", "Secret", "Top Secret", "TS/SCI", "TS/SCI", "Confidential"
+- "must hold", "ability to obtain", "eligible for", "clearance required"
+- "security clearance", "government clearance", "DoD clearance"
+
+If ANY clearance language is found, set requires_clearance=true and capture the exact type and text.
+
 Return ONLY valid JSON, no other text."""
 
     # Prompt for comparing and generating fit analysis (Pass 3)
     FIT_COMPARISON_PROMPT = """You are comparing a candidate's resume against a job posting to determine fit.
 
-CANDIDATE PREFERENCES (HARD RULES - these make a job INCOMPATIBLE):
+CANDIDATE PREFERENCES (HARD RULES - violations result in score=0 and compatible=false):
 1. NO government security clearance - candidate does not have and cannot obtain clearance
 2. ONLY Entry-level, Junior, or Associate roles - reject Mid-level, Senior, Lead, Principal, Staff, or Director positions
 
-SCAM DETECTION RULES - Flag as suspicious if:
+SCORING INSTRUCTIONS (0-100):
+- Score based on how well the JOB MATCHES the RESUME
+- 90-100: Excellent match - most required skills present, experience aligns well
+- 70-89: Good match - many required skills, some gaps acceptable
+- 50-69: Moderate match - missing some key skills or experience misalignment
+- 30-49: Weak match - missing many required skills or significant gaps
+- 10-29: Poor match - major skill gaps, unlikely to succeed
+- 0: HARD RULE VIOLATED (requires clearance OR mid/senior+ level OR high scam risk)
+
+SCAM DETECTION RULES - Flag as high risk if job shows:
 - Unrealistic salary for the role/experience level
-- Personal email domains (gmail, yahoo) for corporate hiring
-- Recruiting agency with no specific client/company
-- "Urgent" or "immediate" hiring pressure language
+- Personal email domains (gmail, yahoo, hotmail) for corporate hiring
+- Recruiting agency with no specific client/company mentioned
+- "Urgent" or "immediate start" pressure language
 - Vague job descriptions with no specific responsibilities
 - Requirements that don't match the job title
-- Requests for payment or financial info
+- Requests for payment or financial information
+- Too-good-to-be-true promises
 
 RESUME DATA:
 {resume_data}
@@ -446,31 +464,32 @@ Now analyze and return ONLY a valid JSON object:
 
 {{
   "score": 75,
-  "summary": "Brief 1-2 sentence fit summary",
+  "summary": "Brief 1-2 sentence assessment of how well this job matches the candidate's background",
   "compatible": true,
   "skills_match": {{
     "matched": ["skills candidate has that job requires"],
     "missing": ["required skills candidate lacks"],
-    "bonus": ["extra skills candidate has"]
+    "bonus": ["extra skills candidate has beyond requirements"]
   }},
   "experience_match": {{
     "required_level": "What the job requires",
-    "assessment": "How candidate's experience compares",
+    "assessment": "How candidate's experience compares to job requirements",
     "compatible": true
   }},
-  "red_flags": ["any disqualifying factors"],
+  "red_flags": ["any disqualifying factors or concerns"],
   "scam_analysis": {{
     "risk_level": "low/medium/high",
     "warnings": ["specific scam indicators found"],
-    "legitimate_signals": ["signs this is a real job"]
+    "legitimate_signals": ["signs this is a real job posting"]
   }},
-  "recommendations": ["tips to improve fit or application"]
+  "recommendations": ["actionable tips to improve application or address gaps"]
 }}
 
-Rules:
-- Score 0-100 based on skills match (0 if incompatible due to hard rules)
-- Set compatible=false if: requires clearance, is mid/senior+ level, or high scam risk
-- Be thorough in scam detection
+Critical Rules:
+- Score 0-100 based on resume-to-job match quality
+- Set score=0 AND compatible=false ONLY if: requires clearance, is mid/senior+ level, OR scam_analysis.risk_level is "high"
+- If scam risk is high, score MUST be 0 and compatible MUST be false
+- Be thorough in scam detection - protect the candidate
 - Return ONLY valid JSON, no other text"""
 
     def __init__(self):
