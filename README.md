@@ -231,6 +231,10 @@ jam stats trends --since 30d
 - `withdrawn` - Withdrew application
 - `ghosted` - No response after extended period
 
+## Configuration
+
+- **Resume for AI features**: Copy `config/resume.txt.example` to `config/resume.txt` and fill in your own details. This file is used by the Job Fit analyzer and job search scoring. Do not commit `config/resume.txt` (it is gitignored).
+
 ## Data Storage
 
 All data is stored locally in `~/.jam/`:
