@@ -16,7 +16,7 @@ echo "Starting JAM Web UI (Production)"
 echo "================================="
 echo "URL: http://localhost:3000"
 echo ""
-echo "Note: Make sure API is running (./scripts/start-api.sh)"
+echo "Note: Make sure API is running (uv run serve)"
 echo "Press Ctrl+C to stop"
 echo ""
 

@@ -14,10 +14,15 @@ dependencies = [
     "python-jobspy>=1.1.0",
     "pandas>=2.0.0",
     "pyyaml>=6.0.0",
+    "python-multipart>=0.0.9",
 ]
 
 [project.scripts]
 jam = "jam.cli.main:app"
+serve = "api.serve:serve"
+
+[tool.uv]
+package = true
 
 [build-system]
 requires = ["hatchling"]

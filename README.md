@@ -8,6 +8,22 @@ JAM features a modern, responsive web interface built with Next.js, React, and T
 
 ### Quick Start
 
+First, install the required dependencies for both the backend and frontend:
+
+```bash
+# 1. Setup Python environment (using uv)
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -e .
+
+# 2. Setup Web environment
+cd web
+npm install
+cd ..
+```
+
+Once installed, you can start the application:
+
 ```bash
 # Development mode (hot reload)
 ./scripts/start-dev.sh
@@ -16,7 +32,7 @@ JAM features a modern, responsive web interface built with Next.js, React, and T
 ./scripts/start-prod.sh
 
 # API only
-./scripts/start-api.sh
+uv run serve
 ```
 
 Then open http://localhost:3000
@@ -113,7 +129,20 @@ The CLI provides powerful command-line functionality for automation, scripting, 
 
 ### Installation
 
-#### Using Conda (Recommended)
+#### Using uv (Recommended)
+
+```bash
+# Create a virtual environment
+uv venv
+
+# Activate the environment
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install the package in development mode
+uv pip install -e .
+```
+
+#### Using Conda
 
 ```bash
 # Create a new conda environment
