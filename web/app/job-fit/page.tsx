@@ -1,33 +1,46 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Upload,
-  FileText,
-  Image as ImageIcon,
-  X,
-  Sparkles,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Shield,
-  Target,
-  Lightbulb,
-  Trash2,
+    AlertTriangle,
+    Camera,
+    CheckCircle2,
+    FileText,
+    HelpCircle,
+    Image as ImageIcon,
+    Lightbulb,
+    Link,
+    Loader2,
+    Plus,
+    Shield,
+    Sparkles,
+    Target,
+    Trash2,
+    Upload,
+    X,
+    XCircle,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Header } from "@/components/layout/header";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { llmApi, resumeApi } from "@/lib/api";
 import type { FitAnalysis } from "@/lib/types";
+
+type JobInputMode = "screenshot" | "url";
 
 export default function JobFitPage() {
   const queryClient = useQueryClient();
@@ -36,9 +49,22 @@ export default function JobFitPage() {
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [useStoredResume, setUseStoredResume] = useState(true);
 
-  // Job posting state
-  const [jobPostingFile, setJobPostingFile] = useState<File | null>(null);
-  const [jobPostingPreview, setJobPostingPreview] = useState<string | null>(null);
+  // Job posting input mode
+  const [jobInputMode, setJobInputMode] = useState<JobInputMode>("screenshot");
+
+  // Screenshot mode state — supports multiple images
+  const [jobPostingFiles, setJobPostingFiles] = useState<File[]>([]);
+  const [jobPostingPreviews, setJobPostingPreviews] = useState<string[]>([]);
+  const [parsedJobPreview, setParsedJobPreview] = useState<Record<string, unknown> | null>(null);
+  const [isPreviewingParsedJob, setIsPreviewingParsedJob] = useState(false);
+  const screenshotDropRef = useRef<HTMLDivElement>(null);
+
+  // URL mode state
+  const [jobPostingUrl, setJobPostingUrl] = useState("");
+  const [urlPreviewImage, setUrlPreviewImage] = useState<string | null>(null);
+  const [urlPreviewText, setUrlPreviewText] = useState<string | null>(null);
+  const [isFetchingUrlPreview, setIsFetchingUrlPreview] = useState(false);
+  const [isPreviewingParsedJobFromUrl, setIsPreviewingParsedJobFromUrl] = useState(false);
 
   // Analysis state
   const [analysis, setAnalysis] = useState<FitAnalysis | null>(null);
@@ -102,17 +128,62 @@ export default function JobFitPage() {
     setUseStoredResume(false);
   }, []);
 
-  // Handle job posting file selection
-  const handleJobPostingSelect = useCallback((files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image file");
+  // Add job posting screenshots (accumulate, not replace)
+  const addJobPostingFiles = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files);
+    const images = arr.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) {
+      toast.error("Please upload image files only");
       return;
     }
-    setJobPostingFile(file);
-    setJobPostingPreview(URL.createObjectURL(file));
+    if (images.length < arr.length) {
+      toast.warning(`${arr.length - images.length} non-image file(s) were skipped`);
+    }
+    setJobPostingFiles((prev) => [...prev, ...images]);
+    images.forEach((img) => {
+      const url = URL.createObjectURL(img);
+      setJobPostingPreviews((prev) => [...prev, url]);
+    });
   }, []);
+
+  const removeJobPostingFile = useCallback((idx: number) => {
+    setJobPostingFiles((prev) => prev.filter((_, i) => i !== idx));
+    setJobPostingPreviews((prev) => {
+      URL.revokeObjectURL(prev[idx]);
+      return prev.filter((_, i) => i !== idx);
+    });
+    setParsedJobPreview(null);
+  }, []);
+
+  // Paste handler — catches clipboard images (Snipping Tool, etc.)
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (jobInputMode !== "screenshot") return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageItems = Array.from(items).filter((i) => i.type.startsWith("image/"));
+      if (imageItems.length === 0) return;
+      e.preventDefault();
+      const files = imageItems
+        .map((i) => i.getAsFile())
+        .filter((f): f is File => f !== null);
+      if (files.length > 0) {
+        addJobPostingFiles(files);
+        toast.success(`Pasted ${files.length} image${files.length > 1 ? "s" : ""} from clipboard`);
+      }
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [jobInputMode, addJobPostingFiles]);
+
+  // Drag-and-drop for screenshot zone
+  const handleScreenshotDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      addJobPostingFiles(e.dataTransfer.files);
+    },
+    [addJobPostingFiles]
+  );
 
   // Save resume for future use
   const handleSaveResume = () => {
@@ -121,11 +192,91 @@ export default function JobFitPage() {
     }
   };
 
+  const handlePreviewParsedJob = async () => {
+    if (jobPostingFiles.length === 0) {
+      toast.error("Please upload at least one job posting screenshot");
+      return;
+    }
+
+    setIsPreviewingParsedJob(true);
+    try {
+      const imageBase64 = await fileToBase64(jobPostingFiles[0]);
+      const parsed = await llmApi.previewJobRequirements(imageBase64);
+      setParsedJobPreview(parsed);
+      toast.success("Parsed preview generated");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to generate parsed preview";
+      toast.error(message);
+    } finally {
+      setIsPreviewingParsedJob(false);
+    }
+  };
+
+  const handleFetchUrlPreview = async () => {
+    const trimmed = jobPostingUrl.trim();
+    if (!trimmed) {
+      toast.error("Please enter a job posting URL first");
+      return;
+    }
+
+    setIsFetchingUrlPreview(true);
+    setUrlPreviewImage(null);
+    setUrlPreviewText(null);
+
+    try {
+      const result = await llmApi.fetchJobUrl(trimmed);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to fetch URL preview");
+      }
+      setUrlPreviewImage(result.preview_image_url || null);
+      setUrlPreviewText(result.text_preview || null);
+      if (result.preview_image_url) {
+        toast.success("Preview loaded");
+      } else {
+        toast.info("No preview image found on this page, but URL content is accessible");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to fetch URL preview";
+      toast.error(message);
+    } finally {
+      setIsFetchingUrlPreview(false);
+    }
+  };
+
+  const handlePreviewParsedJobFromUrl = async () => {
+    const trimmed = jobPostingUrl.trim();
+    if (!trimmed) {
+      toast.error("Please enter a job posting URL first");
+      return;
+    }
+
+    setIsPreviewingParsedJobFromUrl(true);
+    try {
+      const parsed = await llmApi.previewJobRequirementsFromUrl(trimmed);
+      setParsedJobPreview(parsed);
+      toast.success("Parsed preview generated");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to generate parsed preview from URL";
+      toast.error(message);
+    } finally {
+      setIsPreviewingParsedJobFromUrl(false);
+    }
+  };
+
+  // Check whether inputs are ready for analysis
+  const hasJobPosting =
+    jobInputMode === "screenshot"
+      ? jobPostingFiles.length > 0
+      : jobPostingUrl.trim().length > 0;
+
   // Analyze job fit
   const handleAnalyze = async () => {
-    // Validate inputs
-    if (!jobPostingFile) {
-      toast.error("Please upload a job posting screenshot");
+    if (!hasJobPosting) {
+      toast.error(
+        jobInputMode === "screenshot"
+          ? "Please upload at least one job posting screenshot"
+          : "Please enter a job posting URL"
+      );
       return;
     }
 
@@ -140,9 +291,6 @@ export default function JobFitPage() {
     setAnalysisProgress(null);
 
     try {
-      // Get job posting base64
-      const jobPostingBase64 = await fileToBase64(jobPostingFile);
-
       // Get resume base64
       let resumeBase64: string;
       if (useStoredResume && storedResume?.has_resume) {
@@ -157,14 +305,27 @@ export default function JobFitPage() {
         throw new Error("No resume available");
       }
 
-      // Call streaming API with progress updates
-      const result = await llmApi.analyzeFitStream(
-        jobPostingBase64,
-        resumeBase64,
-        (progress) => {
-          setAnalysisProgress(progress);
-        }
-      );
+      let result: FitAnalysis;
+
+      if (jobInputMode === "url") {
+        // URL mode — stream analysis from text
+        result = await llmApi.analyzeFitFromUrlStream(
+          jobPostingUrl.trim(),
+          resumeBase64,
+          (progress) => setAnalysisProgress(progress)
+        );
+      } else {
+        // Screenshot mode — use first image (legacy path, good for most cases)
+        // If multiple screenshots were provided, use only the first for now since
+        // the model processes one image at a time.
+        const jobPostingBase64 = await fileToBase64(jobPostingFiles[0]);
+        result = await llmApi.analyzeFitStream(
+          jobPostingBase64,
+          resumeBase64,
+          (progress) => setAnalysisProgress(progress)
+        );
+      }
+
       setAnalysis(result);
       toast.success("Analysis complete!");
     } catch (error) {
@@ -206,8 +367,8 @@ export default function JobFitPage() {
                     AI-Powered Job Fit Analysis
                   </p>
                   <p className="text-blue-600/80 dark:text-blue-400/80 mt-1">
-                    Upload your resume (PDF or image) and a job posting screenshot to get a detailed compatibility analysis,
-                    including skills match, experience level check, and scam detection.
+                    Provide your resume and a job posting (via URL or screenshot) to get a detailed
+                    compatibility analysis, including skills match, experience level check, and scam detection.
                     PDF resumes are preferred — text is extracted directly for better accuracy.
                   </p>
                 </div>
@@ -347,60 +508,301 @@ export default function JobFitPage() {
                 <CardTitle className="flex items-center gap-2">
                   <ImageIcon className="h-5 w-5" />
                   Job Posting
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-xs text-sm space-y-2 p-3">
+                        <p className="font-semibold">How to provide the job posting</p>
+                        <p><strong>URL:</strong> Paste the direct job posting link. Works best on sites that don't block bots (e.g. company career pages). LinkedIn/Indeed may block access — use screenshots instead.</p>
+                        <p><strong>Screenshot tips:</strong></p>
+                        <ul className="list-disc ml-4 space-y-1">
+                          <li>Capture the full posting including title, requirements, and description.</li>
+                          <li><strong>Windows:</strong> Press <kbd>Win+Shift+S</kbd> to open Snipping Tool, select the area, then paste here with <kbd>Ctrl+V</kbd>.</li>
+                          <li><strong>Mac:</strong> Press <kbd>Cmd+Shift+4</kbd>, drag to select, then paste with <kbd>Cmd+V</kbd>.</li>
+                          <li>If the posting is long, take multiple screenshots and upload them all.</li>
+                          <li>Drag &amp; drop images or use the file picker.</li>
+                        </ul>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </CardTitle>
-                <CardDescription>
-                  Upload a screenshot of the job posting to analyze
-                </CardDescription>
+
+                {/* Mode toggle */}
+                <div className="flex gap-1 mt-1 rounded-lg bg-muted p-1 w-fit">
+                  <button
+                    onClick={() => {
+                      setJobInputMode("screenshot");
+                      setParsedJobPreview(null);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      jobInputMode === "screenshot"
+                        ? "bg-background shadow text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    Screenshot
+                  </button>
+                  <button
+                    onClick={() => {
+                      setJobInputMode("url");
+                      setParsedJobPreview(null);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      jobInputMode === "url"
+                        ? "bg-background shadow text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Link className="h-3.5 w-3.5" />
+                    URL
+                  </button>
+                </div>
               </CardHeader>
+
               <CardContent>
-                <div
-                  className={`
-                    rounded-lg border-2 border-dashed p-4 transition-colors
-                    ${jobPostingFile ? "border-primary bg-primary/5" : "border-muted-foreground/25"}
-                  `}
-                >
-                  {jobPostingFile ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{jobPostingFile.name}</span>
+                {jobInputMode === "url" ? (
+                  /* ── URL mode ── */
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="https://company.com/jobs/123"
+                        value={jobPostingUrl}
+                        onChange={(e) => {
+                          setJobPostingUrl(e.target.value);
+                          setUrlPreviewImage(null);
+                          setUrlPreviewText(null);
+                          setParsedJobPreview(null);
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 whitespace-nowrap"
+                        onClick={handleFetchUrlPreview}
+                        disabled={isFetchingUrlPreview || !jobPostingUrl.trim()}
+                      >
+                        {isFetchingUrlPreview ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            Previewing...
+                          </>
+                        ) : (
+                          "Preview URL"
+                        )}
+                      </Button>
+                      {jobPostingUrl && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8"
+                          className="h-9 w-9 flex-shrink-0"
                           onClick={() => {
-                            setJobPostingFile(null);
-                            setJobPostingPreview(null);
+                            setJobPostingUrl("");
+                            setUrlPreviewImage(null);
+                            setUrlPreviewText(null);
+                            setParsedJobPreview(null);
                           }}
                         >
                           <X className="h-4 w-4" />
                         </Button>
-                      </div>
-                      {jobPostingPreview && (
-                        <img
-                          src={jobPostingPreview}
-                          alt="Job posting preview"
-                          className="w-full rounded-md border max-h-48 object-contain bg-muted"
-                        />
                       )}
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <ImageIcon className="h-8 w-8 text-muted-foreground/50 mb-2" />
-                      <label className="text-sm text-muted-foreground cursor-pointer">
-                        <span className="text-primary hover:underline">Upload job posting screenshot</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleJobPostingSelect(e.target.files)}
-                        />
-                      </label>
-                      <p className="text-xs text-muted-foreground/70 mt-1">
-                        JPEG, PNG, WebP, GIF
-                      </p>
+
+                    <div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePreviewParsedJobFromUrl}
+                        disabled={isPreviewingParsedJobFromUrl || !jobPostingUrl.trim()}
+                        className="gap-2"
+                      >
+                        {isPreviewingParsedJobFromUrl ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Parsing URL...
+                          </>
+                        ) : (
+                          "Show parsed preview"
+                        )}
+                      </Button>
                     </div>
-                  )}
-                </div>
+
+                    {(urlPreviewImage || urlPreviewText) && (
+                      <div className="rounded-lg border bg-muted/20 overflow-hidden">
+                        <div className="px-3 py-2 border-b bg-muted/30">
+                          <p className="text-xs font-medium text-muted-foreground">URL Preview</p>
+                        </div>
+                        {urlPreviewImage ? (
+                          <img
+                            src={urlPreviewImage}
+                            alt="Job posting preview from URL"
+                            className="w-full max-h-44 object-contain bg-background"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="p-3 text-xs text-muted-foreground">
+                            No preview image metadata found for this page.
+                          </div>
+                        )}
+                        {urlPreviewText && (
+                          <div className="p-3 border-t">
+                            <p className="text-xs text-muted-foreground line-clamp-4">{urlPreviewText}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {parsedJobPreview && (
+                      <div className="rounded-lg border bg-muted/20 overflow-hidden">
+                        <div className="px-3 py-2 border-b bg-muted/30">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Parsed Preview (comparison format)
+                          </p>
+                        </div>
+                        <div className="p-3">
+                          <pre className="text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap break-words">
+                            {JSON.stringify(parsedJobPreview, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-muted-foreground">
+                      Works best on company career pages. LinkedIn, Indeed, and similar sites often block
+                      automated access — use screenshots for those.
+                    </p>
+                  </div>
+                ) : (
+                  /* ── Screenshot mode ── */
+                  <div className="space-y-3">
+                    {/* Drop zone */}
+                    <div
+                      ref={screenshotDropRef}
+                      onDrop={handleScreenshotDrop}
+                      onDragOver={(e) => e.preventDefault()}
+                      className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 transition-colors hover:border-muted-foreground/40"
+                    >
+                      <div className="flex flex-col items-center justify-center py-4 text-center">
+                        <Upload className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                        <label className="text-sm text-muted-foreground cursor-pointer">
+                          <span className="text-primary hover:underline">Upload screenshot(s)</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files) addJobPostingFiles(e.target.files);
+                              setParsedJobPreview(null);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                        <p className="text-xs text-muted-foreground/70 mt-1">
+                          JPEG, PNG, WebP · drag &amp; drop · or <kbd className="px-1 py-0.5 rounded bg-muted text-xs">Ctrl+V</kbd> to paste
+                        </p>
+                        <p className="text-xs text-muted-foreground/60 mt-0.5">
+                          Multiple screenshots supported for long postings
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Uploaded images list */}
+                    {jobPostingFiles.length > 0 && (
+                      <div className="space-y-2">
+                        {jobPostingFiles.map((file, idx) => (
+                          <div key={idx} className="rounded-lg border bg-muted/30 overflow-hidden">
+                            <div className="flex items-center justify-between px-3 py-2">
+                              <span className="text-sm font-medium truncate max-w-[180px]">
+                                {file.name || `Screenshot ${idx + 1}`}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 flex-shrink-0"
+                                onClick={() => removeJobPostingFile(idx)}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                            <img
+                              src={jobPostingPreviews[idx]}
+                              alt={`Screenshot ${idx + 1}`}
+                              className="w-full max-h-40 object-contain bg-background border-t"
+                            />
+                          </div>
+                        ))}
+
+                        {/* Add more button */}
+                        <label className="flex items-center gap-2 text-sm text-primary cursor-pointer hover:underline w-fit">
+                          <Plus className="h-4 w-4" />
+                          Add another screenshot
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files) addJobPostingFiles(e.target.files);
+                              setParsedJobPreview(null);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+
+                        <div className="pt-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handlePreviewParsedJob}
+                            disabled={isPreviewingParsedJob || jobPostingFiles.length === 0}
+                            className="gap-2"
+                          >
+                            {isPreviewingParsedJob ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Parsing screenshot...
+                              </>
+                            ) : (
+                              "Show parsed preview"
+                            )}
+                          </Button>
+                          {jobPostingFiles.length > 1 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Using the first screenshot for this preview.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {parsedJobPreview && (
+                      <div className="rounded-lg border bg-muted/20 overflow-hidden">
+                        <div className="px-3 py-2 border-b bg-muted/30">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Parsed Preview (comparison format)
+                          </p>
+                        </div>
+                        <div className="p-3">
+                          <pre className="text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap break-words">
+                            {JSON.stringify(parsedJobPreview, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Help hint */}
+                    {jobPostingFiles.length === 0 && (
+                      <p className="text-xs text-muted-foreground/70">
+                        <strong>Tip:</strong> Scroll through the full job posting before screenshotting.
+                        Capture the job title, requirements, responsibilities, and any salary/location info.
+                      </p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -410,7 +812,7 @@ export default function JobFitPage() {
             <Button
               size="lg"
               onClick={handleAnalyze}
-              disabled={isAnalyzing || !jobPostingFile || (!resumeFile && !storedResume?.has_resume)}
+              disabled={isAnalyzing || !hasJobPosting || (!resumeFile && !storedResume?.has_resume)}
               className="gap-2"
             >
               {isAnalyzing ? (

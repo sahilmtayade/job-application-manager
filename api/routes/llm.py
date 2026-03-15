@@ -1,24 +1,31 @@
 """LLM/Ollama routes for job posting analysis"""
 
 import json
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from api.schemas import (
-    ScanJobPostingRequest,
+    AnalyzeFitFromUrlRequest,
+    AnalyzeFitRequest,
+    ExperienceMatchResponse,
     ExtractedJobDataResponse,
-    LLMStatusResponse,
+    FetchJobUrlRequest,
+    FetchJobUrlResponse,
+    FitAnalysisResponse,
     LLMConfigResponse,
     LLMConfigUpdateRequest,
-    AnalyzeFitRequest,
-    FitAnalysisResponse,
-    SkillsMatchResponse,
-    ExperienceMatchResponse,
+    LLMStatusResponse,
+    PreviewJobRequirementsFromUrlRequest,
+    PreviewJobRequirementsRequest,
+    PreviewJobRequirementsResponse,
     ScamAnalysisResponse,
+    ScanJobPostingRequest,
+    SkillsMatchResponse,
 )
-from jam.core.services.llm_service import LLMService
-from jam.core.services.config_service import ConfigService
 from jam.core.llm_config import get_llm_config, reload_config
+from jam.core.services.config_service import ConfigService
+from jam.core.services.llm_service import LLMService
 
 router = APIRouter()
 
@@ -104,14 +111,13 @@ async def scan_job_posting(request: ScanJobPostingRequest):
     status = await service.get_status()
     if not status["available"]:
         raise HTTPException(
-            status_code=503,
-            detail="Ollama is not available. Please ensure Ollama is running."
+            status_code=503, detail="Ollama is not available. Please ensure Ollama is running."
         )
 
     if not status["model_ready"]:
         raise HTTPException(
             status_code=503,
-            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}"
+            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}",
         )
 
     try:
@@ -120,9 +126,64 @@ async def scan_job_posting(request: ScanJobPostingRequest):
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to analyze image: {str(e)}")
+
+
+@router.post("/preview-job-requirements", response_model=PreviewJobRequirementsResponse)
+async def preview_job_requirements(request: PreviewJobRequirementsRequest):
+    """Preview the full parsed job requirements object from a posting screenshot."""
+    service = LLMService()
+
+    status = await service.get_status()
+    if not status["available"]:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to analyze image: {str(e)}"
+            status_code=503, detail="Ollama is not available. Please ensure Ollama is running."
+        )
+
+    if not status["model_ready"]:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}",
+        )
+
+    try:
+        data = await service.preview_job_requirements_from_image(request.image_base64)
+        return PreviewJobRequirementsResponse(data=data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to preview job requirements: {str(e)}")
+
+
+@router.post("/preview-job-requirements-from-url", response_model=PreviewJobRequirementsResponse)
+async def preview_job_requirements_from_url(request: PreviewJobRequirementsFromUrlRequest):
+    """Preview the full parsed job requirements object from a job posting URL."""
+    service = LLMService()
+
+    status = await service.get_status()
+    if not status["available"]:
+        raise HTTPException(
+            status_code=503, detail="Ollama is not available. Please ensure Ollama is running."
+        )
+
+    if not status["model_ready"]:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}",
+        )
+
+    success, error, job_text, _ = await service.fetch_job_posting_url(request.job_posting_url)
+    if not success:
+        raise HTTPException(status_code=422, detail=error)
+
+    try:
+        data = await service.preview_job_requirements_from_text(job_text)
+        return PreviewJobRequirementsResponse(data=data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to preview job requirements from URL: {str(e)}"
         )
 
 
@@ -140,14 +201,13 @@ async def analyze_job_fit(request: AnalyzeFitRequest):
     status = await service.get_status()
     if not status["available"]:
         raise HTTPException(
-            status_code=503,
-            detail="Ollama is not available. Please ensure Ollama is running."
+            status_code=503, detail="Ollama is not available. Please ensure Ollama is running."
         )
 
     if not status["model_ready"]:
         raise HTTPException(
             status_code=503,
-            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}"
+            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}",
         )
 
     try:
@@ -176,11 +236,9 @@ async def analyze_job_fit(request: AnalyzeFitRequest):
     except Exception as e:
         print(f"Exception in analyze_job_fit: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to analyze job fit: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to analyze job fit: {str(e)}")
 
 
 @router.post("/analyze-fit-stream")
@@ -196,14 +254,13 @@ async def analyze_job_fit_stream(request: AnalyzeFitRequest):
     status = await service.get_status()
     if not status["available"]:
         raise HTTPException(
-            status_code=503,
-            detail="Ollama is not available. Please ensure Ollama is running."
+            status_code=503, detail="Ollama is not available. Please ensure Ollama is running."
         )
 
     if not status["model_ready"]:
         raise HTTPException(
             status_code=503,
-            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}"
+            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}",
         )
 
     async def event_generator():
@@ -226,7 +283,7 @@ async def analyze_job_fit_stream(request: AnalyzeFitRequest):
                             "red_flags": result.red_flags,
                             "scam_analysis": result.scam_analysis.to_dict(),
                             "recommendations": result.recommendations,
-                        }
+                        },
                     }
                     yield f"data: {json.dumps(response_data)}\n\n"
                 else:
@@ -242,6 +299,86 @@ async def analyze_job_fit_stream(request: AnalyzeFitRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
+
+@router.post("/fetch-job-url", response_model=FetchJobUrlResponse)
+async def fetch_job_url(request: FetchJobUrlRequest):
+    """
+    Fetch a job posting URL and check it can be read.
+    Returns success/failure and a short text preview.
+    """
+    service = LLMService()
+    success, error, text, preview_image_url = await service.fetch_job_posting_url(request.url)
+    if not success:
+        return FetchJobUrlResponse(success=False, error=error)
+    preview = text[:300].strip() if text else ""
+    return FetchJobUrlResponse(
+        success=True,
+        text_preview=preview,
+        preview_image_url=preview_image_url,
+    )
+
+
+@router.post("/analyze-fit-from-url-stream")
+async def analyze_job_fit_from_url_stream(request: AnalyzeFitFromUrlRequest):
+    """
+    Fetch a job posting URL and analyze fit against a resume using SSE streaming.
+    """
+    service = LLMService()
+
+    # Check if Ollama is available
+    status = await service.get_status()
+    if not status["available"]:
+        raise HTTPException(
+            status_code=503, detail="Ollama is not available. Please ensure Ollama is running."
+        )
+    if not status["model_ready"]:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}",
+        )
+
+    # Fetch the URL up-front so we can return an error immediately if it fails
+    success, error, job_text, _ = await service.fetch_job_posting_url(request.job_posting_url)
+    if not success:
+        raise HTTPException(status_code=422, detail=error)
+
+    async def event_generator():
+        try:
+            async for progress in service.analyze_job_fit_stream_from_text(
+                job_text=job_text,
+                resume_base64=request.resume_base64,
+            ):
+                if progress.get("type") == "complete":
+                    result = progress["result"]
+                    response_data = {
+                        "type": "complete",
+                        "result": {
+                            "score": result.score,
+                            "summary": result.summary,
+                            "compatible": result.compatible,
+                            "skills_match": result.skills_match.to_dict(),
+                            "experience_match": result.experience_match.to_dict(),
+                            "red_flags": result.red_flags,
+                            "scam_analysis": result.scam_analysis.to_dict(),
+                            "recommendations": result.recommendations,
+                        },
+                    }
+                    yield f"data: {json.dumps(response_data)}\n\n"
+                else:
+                    yield f"data: {json.dumps(progress)}\n\n"
+        except Exception as e:
+            error_data = {"type": "error", "message": str(e)}
+            yield f"data: {json.dumps(error_data)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -3,56 +3,54 @@
  */
 
 import type {
-  Application,
-  ApplicationCreate,
-  ApplicationUpdate,
-  ApplicationListResponse,
-  StatusChangeRequest,
-  ApplicationEvent,
-  ApplicationEventsResponse,
-  ValidStatusesResponse,
-  Company,
-  CompanyListResponse,
-  StatsSummary,
-  StatsTrends,
-  StatsFunnel,
-  StatsSources,
-  CumulativeStats,
-  AchievementsList,
-  WeeklyComparison,
-  ConfigList,
-  Goal,
-  GoalCreate,
-  CurrentGoals,
-  Note,
-  Alias,
-  AliasListResponse,
-  Backup,
-  BackupListResponse,
-  BannedCompany,
-  BannedCompanyCreate,
-  BannedCompanyListResponse,
-  BannedCheckResponse,
-  BannedSource,
-  BannedSourceCreate,
-  BannedSourceListResponse,
-  BannedSourceCheckResponse,
-  ApplicationFile,
-  FileListResponse,
-  ExtractedJobData,
-  LLMStatus,
-  LLMConfig,
-  LLMConfigUpdate,
-  FitAnalysis,
-  ResumeInfo,
-  ResumeData,
-  JobSearchResponse,
-  SavedJobSearchResponse,
-  JobSearchResultsInfo,
-  JobSearchKeywords,
-  JobFiltersResponse,
-  JobFilter,
-  LLMAnalysisStatus,
+    AchievementsList,
+    Alias,
+    AliasListResponse,
+    Application,
+    ApplicationCreate,
+    ApplicationEvent,
+    ApplicationEventsResponse,
+    ApplicationFile,
+    ApplicationListResponse,
+    ApplicationUpdate,
+    BackupListResponse,
+    BannedCheckResponse,
+    BannedCompany,
+    BannedCompanyCreate,
+    BannedCompanyListResponse,
+    BannedSource,
+    BannedSourceCheckResponse,
+    BannedSourceCreate,
+    BannedSourceListResponse,
+    Company,
+    CompanyListResponse,
+    ConfigList,
+    CumulativeStats,
+    CurrentGoals,
+    ExtractedJobData,
+    FileListResponse,
+    FitAnalysis,
+    Goal,
+    GoalCreate,
+    JobFilter,
+    JobFiltersResponse,
+    JobSearchKeywords,
+    JobSearchResultsInfo,
+    LLMAnalysisStatus,
+    LLMConfig,
+    LLMConfigUpdate,
+    LLMStatus,
+    Note,
+    ResumeData,
+    ResumeInfo,
+    SavedJobSearchResponse,
+    StatsFunnel,
+    StatsSources,
+    StatsSummary,
+    StatsTrends,
+    StatusChangeRequest,
+    ValidStatusesResponse,
+    WeeklyComparison
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -517,6 +515,89 @@ export const llmApi = {
       method: "POST",
       body: JSON.stringify({ image_base64: imageBase64 }),
     });
+  },
+
+  previewJobRequirements: async (imageBase64: string): Promise<Record<string, unknown>> => {
+    const response = await fetchApi<{ data: Record<string, unknown> }>("/api/llm/preview-job-requirements", {
+      method: "POST",
+      body: JSON.stringify({ image_base64: imageBase64 }),
+    });
+    return response.data;
+  },
+
+  previewJobRequirementsFromUrl: async (jobPostingUrl: string): Promise<Record<string, unknown>> => {
+    const response = await fetchApi<{ data: Record<string, unknown> }>("/api/llm/preview-job-requirements-from-url", {
+      method: "POST",
+      body: JSON.stringify({ job_posting_url: jobPostingUrl }),
+    });
+    return response.data;
+  },
+
+  fetchJobUrl: async (url: string): Promise<{ success: boolean; error?: string; text_preview?: string; preview_image_url?: string }> => {
+    return fetchApi("/api/llm/fetch-job-url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+  },
+
+  analyzeFitFromUrlStream: async (
+    jobPostingUrl: string,
+    resumeBase64: string,
+    onProgress: (progress: { phase: number; totalPhases: number; message: string }) => void,
+  ): Promise<FitAnalysis> => {
+    const url = `${API_URL}/api/llm/analyze-fit-from-url-stream`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_posting_url: jobPostingUrl,
+        resume_base64: resumeBase64,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+      throw new ApiError(response.status, error.detail || "Request failed");
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const decoder = new TextDecoder();
+    let result: FitAnalysis | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const text = decoder.decode(value);
+      const lines = text.split("\n");
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === "progress") {
+              onProgress({
+                phase: data.phase,
+                totalPhases: data.total_phases,
+                message: data.message,
+              });
+            } else if (data.type === "complete") {
+              result = data.result;
+            } else if (data.type === "error") {
+              throw new Error(data.message);
+            }
+          } catch (e) {
+            if (e instanceof SyntaxError) continue;
+            throw e;
+          }
+        }
+      }
+    }
+
+    if (!result) throw new Error("Analysis did not complete");
+    return result;
   },
 
   analyzeFit: async (jobPostingBase64: string, resumeBase64: string): Promise<FitAnalysis> => {
