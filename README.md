@@ -12,9 +12,8 @@ First, install the required dependencies for both the backend and frontend:
 
 ```bash
 # 1. Setup Python environment (using uv)
-uv venv
+uv sync
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv pip install -e .
 
 # 2. Setup Web environment
 cd web

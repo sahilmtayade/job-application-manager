@@ -30,3 +30,26 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["jam", "api"]
+
+[dependency-groups]
+dev = [
+    "ruff",  # Linter/Formatter
+    "ty",  # Astral's Type Checker
+    "pytest",
+    "pre-commit",
+]
+
+[tool.ruff]
+line-length = 100
+exclude = [".venv", "__pycache__", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "W", "N", "SIM", "TID"]
+ignore = ["E501"]
+unfixable = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["jam", "api"]
+
+[tool.pytest.ini_options]
+pythonpath = ["jam", "api"]
