@@ -39,6 +39,7 @@ import type {
     LLMAnalysisStatus,
     LLMConfig,
     LLMConfigUpdate,
+    LLMModelsResponse,
     LLMStatus,
     Note,
     ResumeData,
@@ -501,6 +502,10 @@ export const llmApi = {
 
   getConfig: async (): Promise<LLMConfig> => {
     return fetchApi("/api/llm/config");
+  },
+
+  getModels: async (): Promise<LLMModelsResponse> => {
+    return fetchApi("/api/llm/models");
   },
 
   updateConfig: async (config: LLMConfigUpdate): Promise<LLMConfig> => {

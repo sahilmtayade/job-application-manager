@@ -535,6 +535,22 @@ class LLMConfigUpdateRequest(BaseModel):
     concurrency: int | None = None
 
 
+class LLMModelInfoResponse(BaseModel):
+    """Single available model entry with optional size information"""
+
+    name: str
+    size_bytes: int | None = None
+
+
+class LLMModelsResponse(BaseModel):
+    """Response model for available model metadata and local system memory"""
+
+    available: bool
+    api_mode: str
+    system_memory_gb: float | None = None
+    models: list[LLMModelInfoResponse]
+
+
 # Job Fit Analysis schemas
 class AnalyzeFitRequest(BaseModel):
     """Request model for analyzing job fit (image-based job posting)"""

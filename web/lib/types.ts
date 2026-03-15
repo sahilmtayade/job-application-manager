@@ -413,6 +413,18 @@ export interface LLMConfigUpdate {
   concurrency?: number;
 }
 
+export interface LLMModelInfo {
+  name: string;
+  size_bytes?: number | null;
+}
+
+export interface LLMModelsResponse {
+  available: boolean;
+  api_mode: "openai" | "ollama";
+  system_memory_gb?: number | null;
+  models: LLMModelInfo[];
+}
+
 // Job Fit Analysis types
 export interface SkillsMatch {
   matched: string[];

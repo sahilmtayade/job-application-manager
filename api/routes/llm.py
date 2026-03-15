@@ -15,6 +15,7 @@ from api.schemas import (
     FitAnalysisResponse,
     LLMConfigResponse,
     LLMConfigUpdateRequest,
+    LLMModelsResponse,
     LLMStatusResponse,
     PreviewJobRequirementsFromUrlRequest,
     PreviewJobRequirementsRequest,
@@ -36,6 +37,14 @@ async def get_llm_status():
     service = LLMService()
     status = await service.get_status()
     return LLMStatusResponse(**status)
+
+
+@router.get("/models", response_model=LLMModelsResponse)
+async def get_llm_models():
+    """Get available models (with size metadata when available) and system RAM"""
+    service = LLMService()
+    models_data = await service.get_models_metadata()
+    return LLMModelsResponse(**models_data)
 
 
 @router.get("/config", response_model=LLMConfigResponse)

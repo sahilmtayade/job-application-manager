@@ -5,10 +5,10 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import fitz  # PyMuPDF
@@ -203,6 +203,40 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Failed to list models: {e}")
         return []
+
+    async def list_models_with_metadata(self) -> list[dict]:
+        """List available models with metadata (name and size when available)."""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(self._get_models_endpoint())
+                if response.status_code != 200:
+                    return []
+
+                data = response.json()
+
+                if self.api_mode == "openai":
+                    models = []
+                    for model in data.get("data", []):
+                        model_id = model.get("id")
+                        if not model_id:
+                            continue
+                        models.append({"name": model_id, "size_bytes": None})
+                    return models
+
+                # Ollama format: {"models": [{"name": "...", "size": 1234, ...}]}
+                models = []
+                for model in data.get("models", []):
+                    model_name = model.get("name")
+                    if not model_name:
+                        continue
+                    size_bytes = model.get("size")
+                    if not isinstance(size_bytes, int):
+                        size_bytes = None
+                    models.append({"name": model_name, "size_bytes": size_bytes})
+                return models
+        except Exception as e:
+            logger.error(f"Failed to list model metadata: {e}")
+            return []
 
     async def has_model(self, model_name: str) -> bool:
         """Check if a specific model is available"""
@@ -709,6 +743,47 @@ Critical Rules:
             "text_model": self.text_model,
             "text_model_ready": text_model_ready,
             "available_models": available_models,
+        }
+
+    @staticmethod
+    def get_system_memory_gb() -> float | None:
+        """Get total system memory in GiB, if available."""
+        try:
+            pages = os.sysconf("SC_PHYS_PAGES")
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            if pages > 0 and page_size > 0:
+                total_bytes = pages * page_size
+                return round(total_bytes / (1024**3), 2)
+        except (AttributeError, ValueError, OSError):
+            pass
+
+        # Linux fallback when sysconf is unavailable
+        try:
+            with open("/proc/meminfo", encoding="utf-8") as meminfo:
+                for line in meminfo:
+                    if line.startswith("MemTotal:"):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            kb = int(parts[1])
+                            return round(kb / (1024**2), 2)
+        except Exception:
+            pass
+
+        return None
+
+    async def get_models_metadata(self) -> dict:
+        """Get available model metadata and system memory for settings UX."""
+        available = await self.client.is_available()
+        models = []
+
+        if available:
+            models = await self.client.list_models_with_metadata()
+
+        return {
+            "available": available,
+            "api_mode": self.api_mode,
+            "system_memory_gb": self.get_system_memory_gb(),
+            "models": models,
         }
 
     async def analyze_job_posting(self, image_base64: str) -> ExtractedJobData:

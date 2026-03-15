@@ -1,51 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { useTheme } from "next-themes";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import {
-  Download,
-  Database,
-  Sun,
-  Moon,
-  Laptop,
-  RefreshCw,
-  Settings2,
+  Bot,
+  CheckCircle2,
   Clock,
+  Database,
+  Download,
+  ExternalLink,
   FileCheck,
   HardDrive,
+  Laptop,
+  Moon,
   Plus,
-  Trash2,
+  RefreshCw,
   Search,
-  Bot,
-  Zap,
-  CheckCircle2,
-  XCircle,
-  Loader2,
+  Settings2,
+  Sun,
+  Trash2,
+  XCircle
 } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Header } from "@/components/layout/header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,12 +37,39 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 
-import { configApi, statsApi, backupApi, llmApi } from "@/lib/api";
-import { workLocationLabels, type WorkLocation, statusLabels, type ApplicationStatus, type LLMConfigUpdate } from "@/lib/types";
+import { backupApi, configApi, llmApi, statsApi } from "@/lib/api";
+import { workLocationLabels, type ApplicationStatus, type LLMConfigUpdate, type WorkLocation } from "@/lib/types";
 
 const allWorkLocations: WorkLocation[] = ["remote", "onsite", "hybrid"];
 const allStatuses: ApplicationStatus[] = [
@@ -75,6 +82,59 @@ const allStatuses: ApplicationStatus[] = [
   "withdrawn",
   "ghosted",
   "scam",
+];
+
+const suggestedOllamaModels = [
+  {
+    name: "llama3.1:8b",
+    role: "Text",
+    size: "8B",
+    ram: "8-12 GB",
+    url: "https://ollama.com/library/llama3.1",
+  },
+  {
+    name: "qwen2.5:7b",
+    role: "Text",
+    size: "7B",
+    ram: "8-12 GB",
+    url: "https://ollama.com/library/qwen2.5",
+  },
+  {
+    name: "mistral:7b",
+    role: "Text",
+    size: "7B",
+    ram: "8-12 GB",
+    url: "https://ollama.com/library/mistral",
+  },
+  {
+    name: "llava:7b",
+    role: "Vision",
+    size: "7B",
+    ram: "10-14 GB",
+    url: "https://ollama.com/library/llava",
+  },
+  {
+    name: "llava:13b",
+    role: "Vision",
+    size: "13B",
+    ram: "16-24 GB",
+    url: "https://ollama.com/library/llava",
+  },
+  {
+    name: "qwen2.5vl:7b",
+    role: "Vision",
+    size: "7B",
+    ram: "10-14 GB",
+    url: "https://ollama.com/library/qwen2.5vl",
+  },
+];
+
+const ramGuidanceRows = [
+  { modelSize: "3B", minRam: "6 GB", recommendedRam: "8 GB", note: "Good for lightweight text tasks" },
+  { modelSize: "7B", minRam: "10 GB", recommendedRam: "12-16 GB", note: "Strong default for text and some vision" },
+  { modelSize: "8B", minRam: "12 GB", recommendedRam: "16 GB", note: "Reliable quality for most text tasks" },
+  { modelSize: "13B", minRam: "18 GB", recommendedRam: "24 GB", note: "Better quality, heavier memory usage" },
+  { modelSize: "34B+", minRam: "40 GB", recommendedRam: "64 GB+", note: "Usually requires high-end workstation" },
 ];
 
 export default function SettingsPage() {
@@ -124,6 +184,12 @@ export default function SettingsPage() {
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
+  const { data: llmModels, isLoading: llmModelsLoading, refetch: refetchLlmModels } = useQuery({
+    queryKey: ["llm", "models"],
+    queryFn: () => llmApi.getModels(),
+    refetchInterval: 30000,
+  });
+
   const { data: llmConfig, isLoading: llmConfigLoading } = useQuery({
     queryKey: ["llm", "config"],
     queryFn: () => llmApi.getConfig(),
@@ -158,6 +224,15 @@ export default function SettingsPage() {
     updateLlmConfigMutation.mutate(updates);
   };
 
+  const availableModelNames =
+    llmModels?.models?.map((m) => m.name) && llmModels.models.length > 0
+      ? llmModels.models.map((m) => m.name)
+      : llmStatus?.available_models || [];
+
+  const modelMetadataByName = Object.fromEntries(
+    (llmModels?.models || []).map((m) => [m.name, m])
+  );
+
   const createBackupMutation = useMutation({
     mutationFn: () => backupApi.create(),
     onSuccess: (data) => {
@@ -184,6 +259,11 @@ export default function SettingsPage() {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatModelSize = (sizeBytes?: number | null) => {
+    if (!sizeBytes || sizeBytes <= 0) return "Unknown";
+    return `${(sizeBytes / (1024 ** 3)).toFixed(1)} GB`;
   };
 
   const setMutation = useMutation({
@@ -523,7 +603,7 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {llmConfigLoading || llmStatusLoading ? (
+            {llmConfigLoading || llmStatusLoading || llmModelsLoading ? (
               <div className="space-y-4">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
@@ -545,7 +625,7 @@ export default function SettingsPage() {
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {llmStatus?.available
-                          ? `${llmStatus.available_models.length} models available`
+                          ? `${availableModelNames.length} models available`
                           : "Check server URL and ensure LLM server is running"}
                       </p>
                     </div>
@@ -553,7 +633,10 @@ export default function SettingsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => refetchLlmStatus()}
+                    onClick={() => {
+                      refetchLlmStatus();
+                      refetchLlmModels();
+                    }}
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
@@ -623,16 +706,18 @@ export default function SettingsPage() {
                           <SelectValue placeholder="Select vision model" />
                         </SelectTrigger>
                         <SelectContent>
-                          {llmStatus?.available_models.map((model) => (
+                          {availableModelNames.map((model) => (
                             <SelectItem key={model} value={model}>
                               {model}
-                              {model === llmStatus?.model && (
-                                <Badge variant="secondary" className="ml-2 text-xs">current</Badge>
-                              )}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {visionModel && (
+                        <p className="text-xs text-muted-foreground">
+                          Selected size: {formatModelSize(modelMetadataByName[visionModel]?.size_bytes)}
+                        </p>
+                      )}
                     </div>
                     <Button
                       onClick={() => handleSaveLlmConfig({ vision_model: visionModel })}
@@ -656,16 +741,18 @@ export default function SettingsPage() {
                           <SelectValue placeholder="Select text model" />
                         </SelectTrigger>
                         <SelectContent>
-                          {llmStatus?.available_models.map((model) => (
+                          {availableModelNames.map((model) => (
                             <SelectItem key={model} value={model}>
                               {model}
-                              {model === llmStatus?.text_model && (
-                                <Badge variant="secondary" className="ml-2 text-xs">current</Badge>
-                              )}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {textModel && (
+                        <p className="text-xs text-muted-foreground">
+                          Selected size: {formatModelSize(modelMetadataByName[textModel]?.size_bytes)}
+                        </p>
+                      )}
                     </div>
                     <Button
                       onClick={() => handleSaveLlmConfig({ text_model: textModel })}
@@ -674,6 +761,96 @@ export default function SettingsPage() {
                       Save
                     </Button>
                   </div>
+
+                  {llmStatus?.available && availableModelNames.length === 0 && (
+                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                      No models found on the server yet. Pull one first, for example: <span className="font-mono">ollama pull llava:7b</span>
+                    </p>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Suggested Models */}
+                <div className="space-y-4">
+                  <Label className="text-base">Suggested Models</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Quick picks for Ollama with links to the model pages.
+                  </p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {suggestedOllamaModels.map((model) => {
+                      const isInstalled = availableModelNames.some((available) => available.startsWith(model.name.split(":")[0]));
+                      return (
+                        <div key={model.name} className="rounded-lg border p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium">{model.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {model.role} • {model.size} • ~{model.ram} RAM
+                              </p>
+                            </div>
+                            {isInstalled ? (
+                              <Badge variant="secondary">Installed</Badge>
+                            ) : (
+                              <Badge variant="outline">Not installed</Badge>
+                            )}
+                          </div>
+                          <a
+                            className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                            href={model.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View on Ollama
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* RAM Guidance */}
+                <div className="space-y-4">
+                  <Label className="text-base">Model Size vs RAM</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Your detected system RAM: {llmModels?.system_memory_gb ? `${llmModels.system_memory_gb.toFixed(2)} GB` : "Unavailable"}
+                  </p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Model Size</TableHead>
+                        <TableHead>Minimum RAM</TableHead>
+                        <TableHead>Recommended RAM</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ramGuidanceRows.map((row) => (
+                        <TableRow key={row.modelSize}>
+                          <TableCell>{row.modelSize}</TableCell>
+                          <TableCell>{row.minRam}</TableCell>
+                          <TableCell>{row.recommendedRam}</TableCell>
+                          <TableCell>{row.note}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+
+                  {llmModels?.models && llmModels.models.length > 0 && (
+                    <div className="rounded-lg border p-3">
+                      <p className="mb-2 text-sm font-medium">Installed Models & Sizes</p>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        {llmModels.models.map((model) => (
+                          <p key={model.name}>
+                            {model.name} — {formatModelSize(model.size_bytes)}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />

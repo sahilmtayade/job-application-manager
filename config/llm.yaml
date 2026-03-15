@@ -6,7 +6,7 @@ server:
   # Base URL for the LLM API
   # Ollama default: http://localhost:11434
   # LM Studio default: http://localhost:1234
-  url: "http://localhost:1234"
+  url: "http://localhost:11434"
 
   # Connection timeout in seconds
   connect_timeout: 60.0
