@@ -259,6 +259,108 @@ jam stats trends --since 30d
 - `withdrawn` - Withdrew application
 - `ghosted` - No response after extended period
 
+## AI Setup (Local Models)
+
+JAM uses **local LLMs** for all AI features — no API keys, no cloud. You need two models running locally: a **vision model** (reads job posting screenshots) and a **text model** (scoring and analysis). The configuration lives in `config/llm.yaml`.
+
+### Recommended Models
+
+| Role | Model | Size | Notes |
+|------|-------|------|-------|
+| Vision | `qwen/qwen2.5vl:7b` | ~5 GB | Best accuracy for reading screenshots |
+| Vision (lightweight) | `qwen/qwen2.5vl:3b` | ~2.5 GB | Good for 8 GB RAM machines |
+| Text | `qwen/qwen2.5:7b` or `llama3.2:3b` | ~5 / 2 GB | Fast, accurate scoring |
+
+> **PDF resumes** skip the vision model entirely — text is extracted directly, so a text-only model is sufficient for resume analysis.
+
+---
+
+### Option A: Ollama
+
+Ollama is the easiest way to run local models. It installs as a background service.
+
+#### Linux
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull the models you want to use
+ollama pull qwen2.5vl:7b       # vision model
+ollama pull qwen2.5:7b         # text model
+
+# Ollama starts automatically; verify it's running
+ollama list
+```
+
+#### macOS
+```bash
+# Install via Homebrew or download from https://ollama.com
+brew install ollama
+
+ollama serve &   # start the server (or launch Ollama.app)
+ollama pull qwen2.5vl:7b
+ollama pull qwen2.5:7b
+```
+
+#### Windows
+1. Download the installer from [ollama.com](https://ollama.com/download)
+2. Run the installer — Ollama starts automatically as a system tray app
+3. Open a terminal (PowerShell or CMD):
+```powershell
+ollama pull qwen2.5-vl:7b
+ollama pull llama3.2:3b
+```
+
+#### Configure JAM for Ollama
+Edit `config/llm.yaml`:
+```yaml
+server:
+  url: "http://localhost:11434"
+
+models:
+  vision: "qwen2.5-vl:7b"   # must match `ollama list` name exactly
+  text: "llama3.2:3b"
+
+api_mode: "ollama"
+```
+
+---
+
+### Option B: LM Studio
+
+LM Studio provides a GUI for downloading and running models. Good choice if you prefer a visual interface or want to try different models easily.
+
+1. Download from [lmstudio.ai](https://lmstudio.ai) (available for Linux, macOS, Windows)
+2. Search for and download your models inside the app (search "qwen2.5-vl" for vision)
+3. Go to **Local Server** tab → load your model → click **Start Server**
+4. The server runs on `http://localhost:1234` by default
+
+#### Configure JAM for LM Studio
+```yaml
+server:
+  url: "http://localhost:1234"
+
+models:
+  vision: "qwen/qwen2.5-vl-7b"   # use the LM Studio model ID shown in the app
+  text: "bartowski/llama-3.2-3b-instruct"
+
+api_mode: "openai"   # LM Studio uses OpenAI-compatible API
+```
+
+---
+
+### Verifying the Setup
+
+Start JAM and open [Settings](http://localhost:3000/settings) — the LLM status panel shows whether the server is reachable and which models are loaded. You can also update the URL and model names from the UI without editing the YAML.
+
+### Performance Tips
+
+- **GPU is strongly recommended.** CPU inference is very slow for vision models.
+- For **8 GB VRAM**, use the 3B vision model + 3B text model.
+- For **16 GB VRAM**, 7B vision + 7B text works well.
+- Lower `analysis.concurrency` in `llm.yaml` if you run out of VRAM during job search.
+
+---
+
 ## Configuration
 
 - **Resume for AI features**: Copy `config/resume.txt.example` to `config/resume.txt` and fill in your own details. This file is used by the Job Fit analyzer and job search scoring. Do not commit `config/resume.txt` (it is gitignored).

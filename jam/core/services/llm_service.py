@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
 from dataclasses import dataclass
 from typing import Optional
 
+import fitz  # PyMuPDF
 import httpx
 
 from jam.core.llm_config import get_llm_config
@@ -351,7 +353,7 @@ Important:
 - For work_location, only use: "remote", "onsite", or "hybrid"
 - Keep notes concise (max 200 characters)"""
 
-    # Prompt for extracting resume content (Pass 1)
+    # Prompt for extracting resume content from an IMAGE (Pass 1 — vision model)
     RESUME_EXTRACTION_PROMPT = """Extract the candidate's complete qualifications from this resume image.
 Return ONLY a valid JSON object:
 
@@ -395,6 +397,55 @@ Important:
 - Include specific technologies and tools mentioned
 - Note any notable achievements or metrics
 - Return ONLY valid JSON, no other text"""
+
+    # Prompt for extracting resume content from PDF TEXT (Pass 1 — text model)
+    # Produces the same JSON schema as RESUME_EXTRACTION_PROMPT so Pass 3 is unchanged.
+    RESUME_TEXT_EXTRACTION_PROMPT = """Extract the candidate's complete qualifications from the resume text below.
+Return ONLY a valid JSON object:
+
+{{
+  "name": "Candidate name",
+  "contact": "Email or location if present",
+  "summary": "Professional summary or objective if present",
+  "skills": {{
+    "technical": ["programming languages", "frameworks", "tools", "technologies"],
+    "soft": ["communication", "leadership", "etc"]
+  }},
+  "experience": [
+    {{
+      "company": "Company name",
+      "title": "Job title",
+      "duration": "Date range or duration",
+      "responsibilities": ["key", "responsibilities", "or", "achievements"]
+    }}
+  ],
+  "projects": [
+    {{
+      "name": "Project name",
+      "description": "Brief description",
+      "technologies": ["tech", "used"]
+    }}
+  ],
+  "education": [
+    {{
+      "institution": "School/University name",
+      "degree": "Degree type and field",
+      "year": "Graduation year if present"
+    }}
+  ],
+  "certifications": ["list", "of", "certifications"],
+  "total_experience_years": "estimated total years of professional experience",
+  "experience_level": "Entry-level/Junior/Associate/Mid/Senior based on experience"
+}}
+
+Important:
+- Extract ALL work experience entries
+- Include specific technologies and tools mentioned
+- Note any notable achievements or metrics
+- Return ONLY valid JSON, no other text
+
+RESUME TEXT:
+{{resume_text}}"""
 
 # Prompt for extracting job requirements (Pass 2)
     JOB_REQUIREMENTS_PROMPT = """Extract the job requirements and details from this job posting image.
@@ -657,14 +708,29 @@ Critical Rules:
             raise ValueError("Analysis did not complete")
         return result
 
+    def _extract_pdf_text(self, pdf_bytes: bytes) -> str:
+        """Extract plain text from a PDF using PyMuPDF."""
+        text_parts = []
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+            for page in doc:
+                text_parts.append(page.get_text())
+        return "\n".join(text_parts).strip()
+
     async def analyze_job_fit_stream(
         self, job_posting_base64: str, resume_base64: str
     ):
         """
         Analyze job fit with streaming progress updates.
         Yields progress dictionaries with type, phase, and message.
+
+        resume_base64 may be a data URL for either an image or a PDF:
+          - "data:image/*;base64,..."  → vision model (Pass 1)
+          - "data:application/pdf;base64,..." → text extraction then text model (Pass 1)
         """
-        # Remove data URL prefix if present
+        # Detect resume type BEFORE stripping the data URL prefix
+        resume_is_pdf = resume_base64.startswith("data:application/pdf")
+
+        # Remove data URL prefix
         if "," in job_posting_base64:
             job_posting_base64 = job_posting_base64.split(",", 1)[1]
         if "," in resume_base64:
@@ -673,12 +739,30 @@ Critical Rules:
         try:
             # Pass 1: Extract resume content
             yield {"type": "progress", "phase": 1, "total_phases": 3, "message": "Extracting resume content..."}
-            print("Pass 1: Extracting resume content...")
-            resume_response = await self.client.generate_with_image(
-                model=self.ollama_model,
-                prompt=self.RESUME_EXTRACTION_PROMPT,
-                image_base64=resume_base64,
-            )
+
+            if resume_is_pdf:
+                # PDF path: extract text, then use text model with text-based prompt
+                print("Pass 1: Extracting resume text from PDF...")
+                pdf_bytes = base64.b64decode(resume_base64)
+                resume_text = self._extract_pdf_text(pdf_bytes)
+                if not resume_text:
+                    yield {"type": "error", "message": "Could not extract text from PDF resume"}
+                    return
+                print(f"PDF text extracted ({len(resume_text)} chars). Sending to text model...")
+                prompt = self.RESUME_TEXT_EXTRACTION_PROMPT.format(resume_text=resume_text)
+                resume_response = await self.client.generate_text(
+                    model=self.text_model,
+                    prompt=prompt,
+                )
+            else:
+                # Image path: use vision model (existing behaviour)
+                print("Pass 1: Extracting resume content from image...")
+                resume_response = await self.client.generate_with_image(
+                    model=self.ollama_model,
+                    prompt=self.RESUME_EXTRACTION_PROMPT,
+                    image_base64=resume_base64,
+                )
+
             if not resume_response:
                 yield {"type": "error", "message": "Failed to extract resume content"}
                 return

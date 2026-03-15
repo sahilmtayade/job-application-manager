@@ -89,12 +89,13 @@ export default function JobFitPage() {
     });
   };
 
-  // Handle resume file selection (images only - vision models can't process PDFs)
+  // Handle resume file selection (images or PDF)
   const handleResumeSelect = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image file (screenshot of your resume). PDFs cannot be processed by AI.");
+    const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
+    if (!allowed) {
+      toast.error("Please upload a PDF or image file.");
       return;
     }
     setResumeFile(file);
@@ -205,8 +206,9 @@ export default function JobFitPage() {
                     AI-Powered Job Fit Analysis
                   </p>
                   <p className="text-blue-600/80 dark:text-blue-400/80 mt-1">
-                    Upload your resume and a job posting screenshot to get a detailed compatibility analysis,
+                    Upload your resume (PDF or image) and a job posting screenshot to get a detailed compatibility analysis,
                     including skills match, experience level check, and scam detection.
+                    PDF resumes are preferred — text is extracted directly for better accuracy.
                   </p>
                 </div>
               </div>
@@ -222,7 +224,7 @@ export default function JobFitPage() {
                   Your Resume
                 </CardTitle>
                 <CardDescription>
-                  Upload a new resume or use your previously saved one
+                  Upload a new resume or use your previously saved one. PDF and image formats supported.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -322,16 +324,16 @@ export default function JobFitPage() {
                     <div className="flex flex-col items-center justify-center py-4 text-center">
                       <Upload className="h-8 w-8 text-muted-foreground/50 mb-2" />
                       <label className="text-sm text-muted-foreground cursor-pointer">
-                        <span className="text-primary hover:underline">Upload resume screenshot</span>
+                        <span className="text-primary hover:underline">Upload resume (PDF or image)</span>
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="application/pdf,image/*"
                           className="hidden"
                           onChange={(e) => handleResumeSelect(e.target.files)}
                         />
                       </label>
                       <p className="text-xs text-muted-foreground/70 mt-1">
-                        Image only (screenshot of your resume)
+                        PDF (recommended for LaTeX resumes) or image
                       </p>
                     </div>
                   )}

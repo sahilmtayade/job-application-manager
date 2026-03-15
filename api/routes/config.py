@@ -77,13 +77,13 @@ def get_resume_data():
 
 @router.post("/resume", response_model=ResumeInfoResponse)
 async def upload_resume(file: UploadFile = File(...)):
-    """Upload and store a resume (image only - vision models cannot process PDFs)"""
-    # Validate file type - only images allowed for AI analysis
-    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+    """Upload and store a resume (image or PDF)."""
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]
     if file.content_type not in allowed_types:
         raise HTTPException(
             status_code=400,
-            detail="Invalid file type. Only images (JPEG, PNG, WebP, GIF) are supported for AI analysis. Please upload a screenshot of your resume."
+            detail="Invalid file type. Supported formats: PDF, JPEG, PNG, WebP."
         )
 
     # Read and encode file
