@@ -535,8 +535,9 @@ RESUME TEXT:
 
     # Prompt for extracting job data from plain text (URL-fetched postings)
     JOB_TEXT_EXTRACTION_PROMPT = """Extract job posting information from the plain text below.
-Return ONLY a valid JSON object with these fields (use null for missing information):
+Return ONLY a valid JSON object within a markdown code block, with these fields (use null for missing information):
 
+```json
 {{
   "company_name": "The company name",
   "position": "The job title/position",
@@ -546,9 +547,10 @@ Return ONLY a valid JSON object with these fields (use null for missing informat
   "location_address": "City, State or location if mentioned",
   "notes": "Brief summary: salary range, key requirements, benefits if mentioned"
 }}
+```
 
 Important:
-- Return ONLY the JSON object, no other text
+- Return ONLY the JSON object within a markdown code block, no other text
 - Use null for any field you cannot determine
 - For work_location, only use: "remote", "onsite", or "hybrid"
 - Keep notes concise (max 200 characters)
@@ -819,17 +821,28 @@ Critical Rules:
 
     def _parse_extraction_response(self, response: str) -> ExtractedJobData:
         """Parse the LLM response into ExtractedJobData"""
-        # Try to extract JSON from response (handle cases where model adds extra text)
-        json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
-        if not json_match:
-            logger.warning(f"No JSON found in response: {response[:200]}")
-            raise ValueError("Could not parse job data from image")
+        # Remove thinking tags if present
+        cleaned = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
+        # Remove markdown code blocks if present
+        cleaned = re.sub(r'```\w*\n?', '', cleaned)
+        cleaned = re.sub(r'\n?```', '', cleaned)
+        cleaned = cleaned.strip()
 
+        data = None
         try:
-            data = json.loads(json_match.group())
-        except json.JSONDecodeError as e:
-            logger.warning(f"JSON parse error: {e}, response: {response[:200]}")
-            raise ValueError("Could not parse job data from image")
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Try to extract JSON block
+            json_match = re.search(r'\{[\s\S]*\}', cleaned)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group())
+                except json.JSONDecodeError as e:
+                    logger.warning(f"JSON parse error: {e}, response: {response[:200]}")
+                    raise ValueError("Could not parse job data from image")
+            else:
+                logger.warning(f"No JSON found in response: {response[:200]}")
+                raise ValueError("Could not parse job data from image")
 
         # Normalize work_location
         work_location = data.get("work_location")
@@ -876,7 +889,7 @@ Critical Rules:
     def _extract_text_from_html(html: str) -> str:
         """Extract readable text from HTML using BeautifulSoup."""
         soup = BeautifulSoup(html, "html.parser")
-        for tag in soup(["script", "style", "noscript", "head", "nav", "footer", "header"]):
+        for tag in soup(["script", "style", "noscript", "head", "nav", "footer", "header", "aside", "form", "iframe", "svg", "button", "img"]):
             tag.decompose()
         text = soup.get_text(separator="\n")
         # Collapse excessive blank lines

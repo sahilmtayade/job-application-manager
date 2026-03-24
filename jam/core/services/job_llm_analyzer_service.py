@@ -60,21 +60,6 @@ class JobAnalysisResult:
 class JobLLMAnalyzerService:
     """Service for analyzing jobs against resume using LLM"""
 
-    # Candidate's core technology stack for matching
-    CORE_STACK = [
-        "react", "next.js", "nextjs", "typescript", "javascript",
-        "python", "flask", "fastapi",
-        "postgresql", "postgres", "mongodb", "mongo",
-        "maplibre", "mapbox", "deck.gl", "geospatial", "gis",
-        "websocket", "websockets", "real-time", "realtime",
-        "celery", "dask", "redis",
-        "node.js", "nodejs", "express",
-        "tailwindcss", "tailwind", "material-ui", "mui",
-        "react-flow", "reactflow",
-        "docker", "kubernetes", "aws", "gcp",
-        "graphql", "rest", "api",
-        "pandas", "etl", "data pipeline",
-    ]
 
     # Prompt template for job analysis
     JOB_ANALYSIS_PROMPT = """You are a strict evaluator. Your only task is to rate how suitable a job is for the candidate.
@@ -84,11 +69,7 @@ Return VALID JSON ONLY. No markdown. No explanations outside JSON.
 ====================
 CANDIDATE FACTS (IMMUTABLE)
 ====================
-- No security clearance (cannot accept clearance-required jobs)
-- Not a veteran
-- Not disabled
-- 2 years of professional experience
-- Location: DMV (DC / Maryland / Virginia)
+{candidate_facts}
 
 ====================
 RESUME
@@ -172,8 +153,7 @@ STEP 2 — SCORING (ONLY IF QUALIFIED)
 ====================
 
 Candidate technical stack:
-React, Next.js, TypeScript, Python, Flask, FastAPI, PostgreSQL, MongoDB,
-MapLibre, WebSockets, Celery, Dask, Node.js, TailwindCSS
+{candidate_stack}
 
 1) BASE SKILL MATCH (primary technologies only)
 - 90%+ match → score range 70–85
@@ -526,7 +506,18 @@ OUTPUT FORMAT (JSON ONLY)
         resume_text: str,
     ) -> Optional[JobAnalysisResult]:
         """Analyze a single job against the resume"""
+        candidate_facts_list = [
+            f"- {self.config_service.get('candidate_clearance_status', 'No security clearance (cannot accept clearance-required jobs)')}",
+            f"- {self.config_service.get('candidate_disqualifiers', 'Not a veteran, Not disabled')}",
+            f"- {self.config_service.get('candidate_experience_years', '2')} years of professional experience",
+            f"- Location: {self.config_service.get('candidate_location', 'DMV (DC / Maryland / Virginia)')}"
+        ]
+        candidate_facts = "\\n".join(candidate_facts_list)
+        candidate_stack = self.config_service.get("candidate_skills", "React, Next.js, TypeScript, Python, Flask, FastAPI, PostgreSQL, MongoDB, MapLibre, WebSockets, Celery, Dask, Node.js, TailwindCSS")
+
         prompt = self.JOB_ANALYSIS_PROMPT.format(
+            candidate_facts=candidate_facts,
+            candidate_stack=candidate_stack,
             resume_text=resume_text,
             job_title=job.title,
             company=job.company,
