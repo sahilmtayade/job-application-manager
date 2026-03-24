@@ -37,9 +37,9 @@ interface JobSearchContextType {
   analyzingJobId: number | null;
 
   // Actions
-  handleSearch: (sites?: string[], offset?: number) => Promise<void>;
+  handleSearch: (sites?: string[], offset?: number, locations?: string[], hoursOld?: number) => Promise<void>;
   runAnalysis: (options: { limit?: number; jobIds?: number[] }) => Promise<void>;
-  handleSearchAndAnalyze: (sites?: string[], offset?: number) => Promise<void>;
+  handleSearchAndAnalyze: (sites?: string[], offset?: number, locations?: string[], hoursOld?: number) => Promise<void>;
 
   // Helpers
   isJobInQueue: (jobId: number | null | undefined) => boolean;
@@ -61,13 +61,13 @@ export function JobSearchProvider({ children }: { children: ReactNode }) {
   const [analyzingJobId, setAnalyzingJobId] = useState<number | null>(null);
 
   // Search handler with streaming
-  const handleSearch = useCallback(async (sites?: string[], offset?: number) => {
+  const handleSearch = useCallback(async (sites?: string[], offset?: number, locations?: string[], hoursOld?: number) => {
     setIsSearching(true);
     setSearchProgress(null);
     let totalFound = 0;
 
     try {
-      await jobSearchApi.search({ sites, offset }, (data) => {
+      await jobSearchApi.search({ sites, offset, locations, hours_old: hoursOld }, (data) => {
         if (data.type === "searching") {
           setSearchProgress((prev) => ({
             keyword: data.keyword || "",
@@ -170,8 +170,8 @@ export function JobSearchProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   // Combined search and analyze
-  const handleSearchAndAnalyze = useCallback(async (sites?: string[], offset?: number) => {
-    await handleSearch(sites, offset);
+  const handleSearchAndAnalyze = useCallback(async (sites?: string[], offset?: number, locations?: string[], hoursOld?: number) => {
+    await handleSearch(sites, offset, locations, hoursOld);
     // After search completes, analyze all unanalyzed jobs
     await runAnalysis({ limit: 0 }); // 0 means all
   }, [handleSearch, runAnalysis]);

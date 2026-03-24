@@ -26,7 +26,8 @@ Once installed, you can start the application:
 ```bash
 # Development mode (hot reload)
 ./scripts/start-dev.sh
-
+# or simply
+cd web && npm run dev
 # Production mode (built)
 ./scripts/start-prod.sh
 
@@ -61,6 +62,7 @@ Then open http://localhost:3000
 ### Core Features
 
 #### Application Management
+
 - **Dual View Modes**: Switch between table and Kanban board layouts
 - **Status Tracking**: 8 detailed statuses with visual indicators
 - **File Attachments**: Upload and manage application documents
@@ -69,6 +71,7 @@ Then open http://localhost:3000
 - **Bulk Operations**: Efficient multi-item management
 
 #### Analytics & Insights
+
 - **Dashboard Overview**: Real-time statistics and activity trends
 - **Funnel Analysis**: Track conversion through application stages
 - **Source Performance**: Success rates by job platform
@@ -77,6 +80,7 @@ Then open http://localhost:3000
 - **Visual Charts**: Interactive charts and progress visualizations
 
 #### Gamification & Motivation
+
 - **Streak Tracking**: Daily application streaks with risk warnings
 - **Achievement System**: Multiple achievement categories (applications, streaks, progress, time-based, combos)
 - **Goal Setting**: Daily and weekly application targets with visual progress
@@ -87,6 +91,7 @@ Then open http://localhost:3000
 ### AI-Powered Features (Beta)
 
 #### Job Fit Analyzer
+
 - **Resume Analysis**: Upload resume screenshots for compatibility checking
 - **Compatibility Scoring**: 0-100 match scores with detailed breakdowns
 - **Skills Gap Analysis**: Matched, missing, and bonus skills identification
@@ -95,6 +100,7 @@ Then open http://localhost:3000
 - **Actionable Recommendations**: Personalized improvement suggestions
 
 #### Automated Job Search
+
 - **Multi-Platform Integration**: LinkedIn, Indeed, Glassdoor, ZipRecruiter, Google, Bayt, BDJobs, Naukri
 - **Intelligent Filtering**: Entry-level detection, experience requirements, keyword matching
 - **AI Scoring**: LLM-based job compatibility analysis
@@ -105,17 +111,20 @@ Then open http://localhost:3000
 ### Smart Management
 
 #### Company Intelligence
+
 - **Duplicate Detection**: Automatic identification of duplicate companies
 - **Company Aliases**: Add alternate names for better matching
 - **Merge Functionality**: Combine duplicate company records
 - **Company History**: Track all interactions with specific companies
 
 #### Banned Lists
+
 - **Company Blacklist**: Maintain list of scam or problematic companies
 - **Platform Filtering**: Exclude low-quality job platforms
 - **Quick Reference**: Easy access to avoid wasting time on bad opportunities
 
 ### Data & Privacy
+
 - **Local-First**: All data stored locally on your machine
 - **SQLite Database**: Fast, reliable local storage with ACID compliance
 - **Backup System**: Automated database backups with restore functionality
@@ -187,57 +196,57 @@ jam stats trends --since 30d
 
 ### Applications
 
-| Command | Description |
-|---------|-------------|
-| `jam add` | Add a new job application |
-| `jam list` | List applications (excludes deleted) |
-| `jam list --all` | Include soft-deleted applications |
-| `jam show ID` | Show full details of an application |
-| `jam update ID` | Update application status or details |
-| `jam delete ID` | Soft delete (preserves for stats) |
-| `jam delete --hard ID` | Permanently remove |
+| Command                | Description                          |
+| ---------------------- | ------------------------------------ |
+| `jam add`              | Add a new job application            |
+| `jam list`             | List applications (excludes deleted) |
+| `jam list --all`       | Include soft-deleted applications    |
+| `jam show ID`          | Show full details of an application  |
+| `jam update ID`        | Update application status or details |
+| `jam delete ID`        | Soft delete (preserves for stats)    |
+| `jam delete --hard ID` | Permanently remove                   |
 
 ### Companies
 
-| Command | Description |
-|---------|-------------|
-| `jam company list` | List all known companies |
-| `jam company merge FROM TO` | Merge duplicate companies |
-| `jam company alias COMPANY ALIAS` | Add alias for matching |
+| Command                           | Description               |
+| --------------------------------- | ------------------------- |
+| `jam company list`                | List all known companies  |
+| `jam company merge FROM TO`       | Merge duplicate companies |
+| `jam company alias COMPANY ALIAS` | Add alias for matching    |
 
 ### Goals
 
-| Command | Description |
-|---------|-------------|
-| `jam goal set daily 5` | Set daily application goal |
+| Command                  | Description                 |
+| ------------------------ | --------------------------- |
+| `jam goal set daily 5`   | Set daily application goal  |
 | `jam goal set weekly 25` | Set weekly application goal |
-| `jam goal status` | Show progress toward goals |
+| `jam goal status`        | Show progress toward goals  |
 
 ### Statistics
 
-| Command | Description |
-|---------|-------------|
-| `jam stats` | Display summary statistics |
-| `jam stats trends` | Show application trends |
-| `jam stats trends --since 30d` | Trends for last 30 days |
-| `jam stats trends --weekly` | Group by week |
+| Command                        | Description                |
+| ------------------------------ | -------------------------- |
+| `jam stats`                    | Display summary statistics |
+| `jam stats trends`             | Show application trends    |
+| `jam stats trends --since 30d` | Trends for last 30 days    |
+| `jam stats trends --weekly`    | Group by week              |
 
 ### Export
 
-| Command | Description |
-|---------|-------------|
-| `jam export out.csv` | Export all active applications |
-| `jam export out.csv --all` | Include soft-deleted |
-| `jam export out.csv --status rejected` | Filter by status |
-| `jam export out.csv --since 30d` | Filter by date |
+| Command                                | Description                    |
+| -------------------------------------- | ------------------------------ |
+| `jam export out.csv`                   | Export all active applications |
+| `jam export out.csv --all`             | Include soft-deleted           |
+| `jam export out.csv --status rejected` | Filter by status               |
+| `jam export out.csv --since 30d`       | Filter by date                 |
 
 ### Backup
 
-| Command | Description |
-|---------|-------------|
-| `jam backup` | Create timestamped backup |
-| `jam backup --list` | List available backups |
-| `jam backup --restore FILE` | Restore from backup |
+| Command                     | Description               |
+| --------------------------- | ------------------------- |
+| `jam backup`                | Create timestamped backup |
+| `jam backup --list`         | List available backups    |
+| `jam backup --restore FILE` | Restore from backup       |
 
 ### CLI Advantages
 
@@ -265,11 +274,11 @@ JAM uses **local LLMs** for all AI features — no API keys, no cloud. You need 
 
 ### Recommended Models
 
-| Role | Model | Size | Notes |
-|------|-------|------|-------|
-| Vision | `qwen/qwen2.5vl:7b` | ~5 GB | Best accuracy for reading screenshots |
-| Vision (lightweight) | `qwen/qwen2.5vl:3b` | ~2.5 GB | Good for 8 GB RAM machines |
-| Text | `qwen/qwen2.5:7b` or `llama3.2:3b` | ~5 / 2 GB | Fast, accurate scoring |
+| Role                 | Model                              | Size      | Notes                                 |
+| -------------------- | ---------------------------------- | --------- | ------------------------------------- |
+| Vision               | `qwen/qwen2.5vl:7b`                | ~5 GB     | Best accuracy for reading screenshots |
+| Vision (lightweight) | `qwen/qwen2.5vl:3b`                | ~2.5 GB   | Good for 8 GB RAM machines            |
+| Text                 | `qwen/qwen2.5:7b` or `llama3.2:3b` | ~5 / 2 GB | Fast, accurate scoring                |
 
 > **PDF resumes** skip the vision model entirely — text is extracted directly, so a text-only model is sufficient for resume analysis.
 
@@ -280,6 +289,7 @@ JAM uses **local LLMs** for all AI features — no API keys, no cloud. You need 
 Ollama is the easiest way to run local models. It installs as a background service.
 
 #### Linux
+
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 
@@ -292,6 +302,7 @@ ollama list
 ```
 
 #### macOS
+
 ```bash
 # Install via Homebrew or download from https://ollama.com
 brew install ollama
@@ -302,22 +313,26 @@ ollama pull qwen2.5:7b
 ```
 
 #### Windows
+
 1. Download the installer from [ollama.com](https://ollama.com/download)
 2. Run the installer — Ollama starts automatically as a system tray app
 3. Open a terminal (PowerShell or CMD):
+
 ```powershell
 ollama pull qwen2.5-vl:7b
 ollama pull llama3.2:3b
 ```
 
 #### Configure JAM for Ollama
+
 Edit `config/llm.yaml`:
+
 ```yaml
 server:
   url: "http://localhost:11434"
 
 models:
-  vision: "qwen2.5-vl:7b"   # must match `ollama list` name exactly
+  vision: "qwen2.5-vl:7b" # must match `ollama list` name exactly
   text: "llama3.2:3b"
 
 api_mode: "ollama"
@@ -335,15 +350,16 @@ LM Studio provides a GUI for downloading and running models. Good choice if you 
 4. The server runs on `http://localhost:1234` by default
 
 #### Configure JAM for LM Studio
+
 ```yaml
 server:
   url: "http://localhost:1234"
 
 models:
-  vision: "qwen/qwen2.5-vl-7b"   # use the LM Studio model ID shown in the app
+  vision: "qwen/qwen2.5-vl-7b" # use the LM Studio model ID shown in the app
   text: "bartowski/llama-3.2-3b-instruct"
 
-api_mode: "openai"   # LM Studio uses OpenAI-compatible API
+api_mode: "openai" # LM Studio uses OpenAI-compatible API
 ```
 
 ---
@@ -368,6 +384,7 @@ Start JAM and open [Settings](http://localhost:3000/settings) — the LLM status
 ## Data Storage
 
 All data is stored locally in `~/.jam/`:
+
 - `jam.db` - SQLite database
 - `backups/` - Timestamped backup files
 

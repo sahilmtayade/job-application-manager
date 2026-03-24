@@ -3,69 +3,73 @@
 import json
 import time
 from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from jam.core.services.job_search_service import JobSearchService
-from jam.core.services.job_search_results_service import JobSearchResultsService
+from jam.core.services.application_service import ApplicationService
+from jam.core.services.banned_company_service import BannedCompanyService
+from jam.core.services.config_service import ConfigService
 from jam.core.services.job_filter_service import JobFilterService
 from jam.core.services.job_llm_analyzer_service import JobLLMAnalyzerService
-from jam.core.services.config_service import ConfigService
-from jam.core.services.banned_company_service import BannedCompanyService
-from jam.core.services.application_service import ApplicationService
-
+from jam.core.services.job_search_results_service import JobSearchResultsService
+from jam.core.services.job_search_service import JobSearchService
 
 router = APIRouter()
 
 
 # ============== Request/Response Models ==============
 
+
 class JobSearchRequest(BaseModel):
     """Request model for job search"""
-    keywords: Optional[list[str]] = None
-    locations: Optional[list[str]] = None
-    sites: Optional[list[str]] = None  # Sites to search (e.g., ["linkedin", "indeed"])
+
+    keywords: list[str] | None = None
+    locations: list[str] | None = None
+    sites: list[str] | None = None  # Sites to search (e.g., ["linkedin", "indeed"])
     hours_old: int = 24
     results_wanted: int = 100
     filter_entry_level: bool = True
     max_experience_years: int = 3
     parallel: bool = True  # Enable parallel scraping across keyword/location combinations
-    max_workers: int = 3   # Max concurrent searches when parallel=True
+    max_workers: int = 3  # Max concurrent searches when parallel=True
     offset: int = 0  # Starting offset for pagination (e.g., 25 starts from 25th result)
 
 
 class JobListingResponse(BaseModel):
     """Response model for a single job listing"""
-    id: Optional[int] = None
+
+    id: int | None = None
     title: str
     company: str
-    location: Optional[str] = None
-    date_posted: Optional[str] = None
+    location: str | None = None
+    date_posted: str | None = None
     job_url: str
     site_source: str
-    description: Optional[str] = None
-    salary_min: Optional[float] = None
-    salary_max: Optional[float] = None
-    job_type: Optional[str] = None
-    first_seen_at: Optional[str] = None
-    last_seen_at: Optional[str] = None
-    llm_score: Optional[int] = None
-    llm_analysis: Optional[str] = None
-    llm_notes: Optional[str] = None
-    llm_analyzed_at: Optional[str] = None
+    description: str | None = None
+    salary_min: float | None = None
+    salary_max: float | None = None
+    job_type: str | None = None
+    first_seen_at: str | None = None
+    last_seen_at: str | None = None
+    llm_score: int | None = None
+    llm_analysis: str | None = None
+    llm_notes: str | None = None
+    llm_analyzed_at: str | None = None
     is_mismatch: bool = False
     is_hidden: bool = False
     is_applied: bool = False
-    applied_at: Optional[str] = None
+    applied_at: str | None = None
     applied_company: bool = False  # True if user has applied to this company before
-    matched_skills: Optional[list[str]] = None
-    missing_skills: Optional[list[str]] = None
+    matched_skills: list[str] | None = None
+    missing_skills: list[str] | None = None
     search_offset: int = 0  # Offset used when this job was found
 
 
 class JobSearchResponse(BaseModel):
     """Response model for job search results"""
+
     jobs: list[JobListingResponse]
     total: int
     new_jobs: int
@@ -76,16 +80,18 @@ class JobSearchResponse(BaseModel):
 
 class SavedResultsResponse(BaseModel):
     """Response model for saved job search results"""
+
     jobs: list[JobListingResponse]
     total: int
     analyzed_count: int
     unanalyzed_count: int
-    keywords: Optional[str] = None
-    last_seen_at: Optional[str] = None
+    keywords: str | None = None
+    last_seen_at: str | None = None
 
 
 class FilterRequest(BaseModel):
     """Request model for adding a filter"""
+
     keyword: str
     filter_type: str  # "positive" or "negative"
     weight: float = 1.0
@@ -93,17 +99,19 @@ class FilterRequest(BaseModel):
 
 class FilterResponse(BaseModel):
     """Response model for a filter"""
+
     id: int
     keyword: str
     filter_type: str
     weight: float
-    source: Optional[str] = None
+    source: str | None = None
     match_count: int
     created_at: str
     updated_at: str
 
 
 # ============== Search Endpoints ==============
+
 
 @router.post("")
 async def search_jobs_stream(request: JobSearchRequest):
@@ -118,10 +126,10 @@ async def search_jobs_stream(request: JobSearchRequest):
     - error: Error during a specific search
     - complete: All searches finished
     """
-    keywords = request.keywords
+    config_service = ConfigService()
 
+    keywords = request.keywords
     if not keywords:
-        config_service = ConfigService()
         stored_keywords = config_service.get("job_search_keywords")
 
         if stored_keywords:
@@ -130,8 +138,25 @@ async def search_jobs_stream(request: JobSearchRequest):
         if not keywords:
             raise HTTPException(
                 status_code=400,
-                detail="No keywords provided. Set keywords in Settings or provide them in the request."
+                detail="No keywords provided. Set keywords in Settings or provide them in the request.",
             )
+
+    locations = request.locations
+    if not locations:
+        stored_loc = config_service.get("candidate_location")
+        if stored_loc:
+            locations = [loc.strip() for loc in stored_loc.split(",") if loc.strip()]
+
+    hours_old = request.hours_old
+    if hours_old == 24:
+        stored_hours = config_service.get("job_search_hours_old")
+        if stored_hours and str(stored_hours).isdigit():
+            hours_old = int(stored_hours)
+    max_exp = request.max_experience_years
+    if max_exp == 3:
+        stored_exp = config_service.get("candidate_experience_years")
+        if stored_exp and str(stored_exp).isdigit():
+            max_exp = int(stored_exp)
 
     def event_generator():
         try:
@@ -143,7 +168,7 @@ async def search_jobs_stream(request: JobSearchRequest):
 
             service = JobSearchService()
             banned_service = BannedCompanyService()
-            locations = request.locations or service.DMV_LOCATIONS
+            final_locations = locations or service.DMV_LOCATIONS
 
             total_new = 0
             total_updated = 0
@@ -157,24 +182,24 @@ async def search_jobs_stream(request: JobSearchRequest):
             if request.parallel:
                 search_generator = service.search_jobs_stream_parallel(
                     keywords=keywords,
-                    locations=locations,
+                    locations=final_locations,
                     sites=request.sites,
-                    hours_old=request.hours_old,
+                    hours_old=hours_old,
                     results_wanted=request.results_wanted,
                     filter_entry_level=request.filter_entry_level,
-                    max_experience_years=request.max_experience_years,
+                    max_experience_years=max_exp,
                     max_workers=request.max_workers,
                     offset=request.offset,
                 )
             else:
                 search_generator = service.search_jobs_stream(
                     keywords=keywords,
-                    locations=locations,
+                    locations=final_locations,
                     sites=request.sites,
-                    hours_old=request.hours_old,
+                    hours_old=hours_old,
                     results_wanted=request.results_wanted,
                     filter_entry_level=request.filter_entry_level,
-                    max_experience_years=request.max_experience_years,
+                    max_experience_years=max_exp,
                     offset=request.offset,
                 )
 
@@ -188,7 +213,9 @@ async def search_jobs_stream(request: JobSearchRequest):
 
                 elif batch["type"] == "found":
                     search_end = time.time()
-                    search_times.append(search_end - start_time if not search_times else search_end - start_time)
+                    search_times.append(
+                        search_end - start_time if not search_times else search_end - start_time
+                    )
 
                     # Filter banned companies from this batch
                     jobs = batch["jobs"]
@@ -204,8 +231,8 @@ async def search_jobs_stream(request: JobSearchRequest):
 
                     # Calculate timing info
                     elapsed_ms = int((time.time() - start_time) * 1000)
-                    progress = batch.get('progress', 0)
-                    total = batch.get('total_searches', 1)
+                    progress = batch.get("progress", 0)
+                    total = batch.get("total_searches", 1)
                     remaining = total - progress
 
                     # Calculate ETA based on average time per search
@@ -213,20 +240,24 @@ async def search_jobs_stream(request: JobSearchRequest):
                     eta_ms = int(avg_per_search_ms * remaining)
 
                     # Send progress update with timing
-                    yield f"data: {json.dumps({
-                        'type': 'found',
-                        'keyword': batch['keyword'],
-                        'location': batch['location'],
-                        'site': batch.get('site'),
-                        'count': len(jobs),
-                        'saved_new': new_count if jobs else 0,
-                        'saved_updated': updated_count if jobs else 0,
-                        'progress': progress,
-                        'total_searches': total,
-                        'elapsed_ms': elapsed_ms,
-                        'eta_ms': eta_ms,
-                        'avg_per_search_ms': int(avg_per_search_ms),
-                    })}\n\n"
+                    progress_update = json.dumps(
+                        {
+                            "type": "found",
+                            "keyword": batch["keyword"],
+                            "location": batch["location"],
+                            "site": batch.get("site"),
+                            "count": len(jobs),
+                            "saved_new": new_count if jobs else 0,
+                            "saved_updated": updated_count if jobs else 0,
+                            "progress": progress,
+                            "total_searches": total,
+                            "elapsed_ms": elapsed_ms,
+                            "eta_ms": eta_ms,
+                            "avg_per_search_ms": int(avg_per_search_ms),
+                        }
+                    )
+
+                    yield f"data: {progress_update}\n\n"
 
                 elif batch["type"] == "error":
                     batch["elapsed_ms"] = int((time.time() - start_time) * 1000)
@@ -234,15 +265,19 @@ async def search_jobs_stream(request: JobSearchRequest):
 
             # Send completion message with total time
             total_time_ms = int((time.time() - start_time) * 1000)
-            yield f"data: {json.dumps({
-                'type': 'complete',
-                'total': total_found,
-                'new_jobs': total_new,
-                'updated_jobs': total_updated,
-                'keywords_used': keywords,
-                'locations_searched': locations,
-                'total_time_ms': total_time_ms,
-            })}\n\n"
+            completion_message = json.dumps(
+                {
+                    "type": "complete",
+                    "total": total_found,
+                    "new_jobs": total_new,
+                    "updated_jobs": total_updated,
+                    "keywords_used": keywords,
+                    "locations_searched": final_locations,
+                    "total_time_ms": total_time_ms,
+                }
+            )
+
+            yield f"data: {completion_message}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -254,11 +289,12 @@ async def search_jobs_stream(request: JobSearchRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
 
 # ============== Results Endpoints ==============
+
 
 @router.get("/results", response_model=SavedResultsResponse)
 async def get_saved_results(hours: int = 24, include_hidden: bool = False):
@@ -436,7 +472,8 @@ async def unmark_applied(result_id: int):
 
 
 # Import shared text utilities
-from jam.core.utils.text_utils import normalize_text as _normalize_text, fuzzy_match as _fuzzy_match
+from jam.core.utils.text_utils import fuzzy_match as _fuzzy_match
+from jam.core.utils.text_utils import normalize_text as _normalize_text
 
 
 @router.post("/results/sync-applied")
@@ -540,8 +577,10 @@ async def purge_old_results(hours: int = 48):
 
 # ============== Bulk Action Endpoints ==============
 
+
 class BulkActionRequest(BaseModel):
     """Request model for bulk actions"""
+
     job_ids: list[int]
 
 
@@ -602,6 +641,7 @@ async def bulk_delete_results(request: BulkActionRequest):
 
 # ============== LLM Analysis Endpoints ==============
 
+
 @router.get("/analyze/status")
 async def get_analysis_status():
     """Get LLM analysis status and availability"""
@@ -622,13 +662,15 @@ async def get_analysis_status():
 
 class AnalyzeRequest(BaseModel):
     """Request model for analyze endpoint"""
+
     limit: int = 20
-    job_ids: Optional[list[int]] = None  # Specific jobs to analyze (force re-analysis)
+    job_ids: list[int] | None = None  # Specific jobs to analyze (force re-analysis)
 
 
 class ClearAnalysisRequest(BaseModel):
     """Request model for clearing analysis"""
-    job_ids: Optional[list[int]] = None  # Specific jobs to clear (if omitted, clears all)
+
+    job_ids: list[int] | None = None  # Specific jobs to clear (if omitted, clears all)
 
 
 @router.post("/analyze")
@@ -665,7 +707,7 @@ async def analyze_jobs_stream(request: AnalyzeRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
 
@@ -700,6 +742,7 @@ async def clear_analysis(request: ClearAnalysisRequest):
 
 
 # ============== Filters Endpoints ==============
+
 
 @router.get("/filters")
 async def get_filters():
@@ -754,6 +797,7 @@ async def delete_filter(filter_id: int):
 
 
 # ============== Keywords Endpoint ==============
+
 
 @router.get("/keywords")
 async def get_search_keywords():

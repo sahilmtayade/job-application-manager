@@ -66,6 +66,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 
@@ -553,131 +554,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Job Search Keywords */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5" />
-              Job Search Keywords
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                Beta
-              </span>
-            </CardTitle>
-            <CardDescription>
-              Keywords used for job search aggregation (comma-separated)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {isLoading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : (
-              <>
-                <div className="flex items-end gap-4">
-                  <div className="flex-1 space-y-2">
-                    <Label>Search Keywords</Label>
-                    <Input
-                      value={jobSearchKeywords || config?.config?.job_search_keywords || ""}
-                      onChange={(e) => setJobSearchKeywords(e.target.value)}
-                      placeholder="Full Stack Engineer, Software Developer, React Developer..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => handleSave("job_search_keywords", jobSearchKeywords)}
-                    disabled={setMutation.isPending}
-                  >
-                    Save
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Enter job titles or skills separated by commas. These will be used to search across LinkedIn, Indeed, Glassdoor, ZipRecruiter, and Google Jobs.
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Candidate Profile Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Candidate Profile
-            </CardTitle>
-            <CardDescription>
-              Details used by the AI to evaluate job fit
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {isLoading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : (
-              <>
-                <div className="space-y-4">
-                  <div className="flex items-end gap-4">
-                    <div className="flex-1 space-y-2">
-                      <Label>Core Technical Skills</Label>
-                      <Input
-                        value={candidateSkills || config?.config?.candidate_skills || ""}
-                        onChange={(e) => setCandidateSkills(e.target.value)}
-                        placeholder="React, Next.js, TypeScript, Python..."
-                      />
-                    </div>
-                    <Button onClick={() => handleSave("candidate_skills", candidateSkills)} disabled={setMutation.isPending}>Save</Button>
-                  </div>
-                  
-                  <div className="flex items-end gap-4">
-                    <div className="flex-1 space-y-2">
-                      <Label>Professional Experience (Years)</Label>
-                      <Input
-                        type="number"
-                        value={candidateExp || config?.config?.candidate_experience_years || ""}
-                        onChange={(e) => setCandidateExp(e.target.value)}
-                        placeholder="2"
-                      />
-                    </div>
-                    <Button onClick={() => handleSave("candidate_experience_years", candidateExp)} disabled={setMutation.isPending}>Save</Button>
-                  </div>
-
-                  <div className="flex items-end gap-4">
-                    <div className="flex-1 space-y-2">
-                      <Label>Location / Region</Label>
-                      <Input
-                        value={candidateLoc || config?.config?.candidate_location || ""}
-                        onChange={(e) => setCandidateLoc(e.target.value)}
-                        placeholder="DMV (DC / Maryland / Virginia)"
-                      />
-                    </div>
-                    <Button onClick={() => handleSave("candidate_location", candidateLoc)} disabled={setMutation.isPending}>Save</Button>
-                  </div>
-
-                  <div className="flex items-end gap-4">
-                    <div className="flex-1 space-y-2">
-                      <Label>Security Clearance Status</Label>
-                      <Input
-                        value={candidateClearance || config?.config?.candidate_clearance_status || ""}
-                        onChange={(e) => setCandidateClearance(e.target.value)}
-                        placeholder="No security clearance (cannot accept clearance-required jobs)"
-                      />
-                    </div>
-                    <Button onClick={() => handleSave("candidate_clearance_status", candidateClearance)} disabled={setMutation.isPending}>Save</Button>
-                  </div>
-
-                  <div className="flex items-end gap-4">
-                    <div className="flex-1 space-y-2">
-                      <Label>Disqualifiers (Hard stops)</Label>
-                      <Input
-                        value={candidateDisqualifiers || config?.config?.candidate_disqualifiers || ""}
-                        onChange={(e) => setCandidateDisqualifiers(e.target.value)}
-                        placeholder="Not a veteran, Not disabled"
-                      />
-                    </div>
-                    <Button onClick={() => handleSave("candidate_disqualifiers", candidateDisqualifiers)} disabled={setMutation.isPending}>Save</Button>
-                  </div>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
 
         {/* AI Settings */}
         <Card>

@@ -3,8 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     AlertTriangle,
+  Braces,
     Camera,
     CheckCircle2,
+  Code2,
     FileText,
     HelpCircle,
     Image as ImageIcon,
@@ -31,6 +33,13 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
@@ -41,6 +50,7 @@ import { llmApi, resumeApi } from "@/lib/api";
 import type { FitAnalysis } from "@/lib/types";
 
 type JobInputMode = "screenshot" | "url";
+type UrlStepStatus = "idle" | "loading" | "success" | "error";
 
 export default function JobFitPage() {
   const queryClient = useQueryClient();
@@ -61,10 +71,17 @@ export default function JobFitPage() {
 
   // URL mode state
   const [jobPostingUrl, setJobPostingUrl] = useState("");
+  const [urlPipelineOpen, setUrlPipelineOpen] = useState(false);
+  const [urlFetchStatus, setUrlFetchStatus] = useState<UrlStepStatus>("idle");
+  const [urlFetchError, setUrlFetchError] = useState<string | null>(null);
+  const [urlParsedStatus, setUrlParsedStatus] = useState<UrlStepStatus>("idle");
+  const [urlParsedError, setUrlParsedError] = useState<string | null>(null);
+  const [urlAnalysisStatus, setUrlAnalysisStatus] = useState<UrlStepStatus>("idle");
+  const [urlAnalysisError, setUrlAnalysisError] = useState<string | null>(null);
   const [urlPreviewImage, setUrlPreviewImage] = useState<string | null>(null);
   const [urlPreviewText, setUrlPreviewText] = useState<string | null>(null);
-  const [isFetchingUrlPreview, setIsFetchingUrlPreview] = useState(false);
-  const [isPreviewingParsedJobFromUrl, setIsPreviewingParsedJobFromUrl] = useState(false);
+  const [urlRawHtml, setUrlRawHtml] = useState<string | null>(null);
+  const [urlParsedPreview, setUrlParsedPreview] = useState<Record<string, unknown> | null>(null);
 
   // Analysis state
   const [analysis, setAnalysis] = useState<FitAnalysis | null>(null);
@@ -212,55 +229,17 @@ export default function JobFitPage() {
     }
   };
 
-  const handleFetchUrlPreview = async () => {
-    const trimmed = jobPostingUrl.trim();
-    if (!trimmed) {
-      toast.error("Please enter a job posting URL first");
-      return;
-    }
-
-    setIsFetchingUrlPreview(true);
+  const resetUrlPipelineState = () => {
+    setUrlFetchStatus("idle");
+    setUrlFetchError(null);
+    setUrlParsedStatus("idle");
+    setUrlParsedError(null);
+    setUrlAnalysisStatus("idle");
+    setUrlAnalysisError(null);
     setUrlPreviewImage(null);
     setUrlPreviewText(null);
-
-    try {
-      const result = await llmApi.fetchJobUrl(trimmed);
-      if (!result.success) {
-        throw new Error(result.error || "Failed to fetch URL preview");
-      }
-      setUrlPreviewImage(result.preview_image_url || null);
-      setUrlPreviewText(result.text_preview || null);
-      if (result.preview_image_url) {
-        toast.success("Preview loaded");
-      } else {
-        toast.info("No preview image found on this page, but URL content is accessible");
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to fetch URL preview";
-      toast.error(message);
-    } finally {
-      setIsFetchingUrlPreview(false);
-    }
-  };
-
-  const handlePreviewParsedJobFromUrl = async () => {
-    const trimmed = jobPostingUrl.trim();
-    if (!trimmed) {
-      toast.error("Please enter a job posting URL first");
-      return;
-    }
-
-    setIsPreviewingParsedJobFromUrl(true);
-    try {
-      const parsed = await llmApi.previewJobRequirementsFromUrl(trimmed);
-      setParsedJobPreview(parsed);
-      toast.success("Parsed preview generated");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to generate parsed preview from URL";
-      toast.error(message);
-    } finally {
-      setIsPreviewingParsedJobFromUrl(false);
-    }
+    setUrlRawHtml(null);
+    setUrlParsedPreview(null);
   };
 
   // Check whether inputs are ready for analysis
@@ -308,12 +287,57 @@ export default function JobFitPage() {
       let result: FitAnalysis;
 
       if (jobInputMode === "url") {
-        // URL mode — stream analysis from text
-        result = await llmApi.analyzeFitFromUrlStream(
-          jobPostingUrl.trim(),
-          resumeBase64,
-          (progress) => setAnalysisProgress(progress)
-        );
+        const trimmedUrl = jobPostingUrl.trim();
+        setUrlPipelineOpen(true);
+        resetUrlPipelineState();
+
+        setUrlFetchStatus("loading");
+
+        try {
+          const fetchResult = await llmApi.fetchJobUrl(trimmedUrl);
+          if (!fetchResult.success) {
+            throw new Error(fetchResult.error || "Failed to fetch URL content");
+          }
+
+          setUrlPreviewImage(fetchResult.preview_image_url || null);
+          setUrlPreviewText(fetchResult.text_preview || null);
+          setUrlRawHtml(fetchResult.raw_html || null);
+          setUrlFetchStatus("success");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to fetch URL content";
+          setUrlFetchStatus("error");
+          setUrlFetchError(message);
+          toast.error(message);
+          return;
+        }
+
+        setUrlParsedStatus("loading");
+        try {
+          const parsed = await llmApi.previewJobRequirementsFromUrl(trimmedUrl);
+          setUrlParsedPreview(parsed);
+          setUrlParsedStatus("success");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to extract JSON from URL";
+          setUrlParsedStatus("error");
+          setUrlParsedError(message);
+          toast.error(message);
+        }
+
+        setUrlAnalysisStatus("loading");
+        try {
+          result = await llmApi.analyzeFitFromUrlStream(
+            trimmedUrl,
+            resumeBase64,
+            (progress) => setAnalysisProgress(progress)
+          );
+          setUrlAnalysisStatus("success");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to analyze job fit from URL";
+          setUrlAnalysisStatus("error");
+          setUrlAnalysisError(message);
+          toast.error(message);
+          return;
+        }
       } else {
         // Screenshot mode — use first image (legacy path, good for most cases)
         // If multiple screenshots were provided, use only the first for now since
@@ -354,6 +378,159 @@ export default function JobFitPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <Dialog open={urlPipelineOpen} onOpenChange={setUrlPipelineOpen}>
+        <DialogContent className="sm:max-w-6xl p-0 max-h-[90vh] overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2 border-b">
+            <DialogTitle>URL Processing Preview</DialogTitle>
+            <DialogDescription>
+              Review scraped screenshot metadata, raw HTML, and extracted JSON before AI fit analysis.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 p-4 md:grid-cols-3 overflow-y-auto">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4" />
+                  Screenshot Preview
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {urlFetchStatus === "loading" ? (
+                  <div className="flex h-48 items-center justify-center text-sm text-muted-foreground gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Scraping URL...
+                  </div>
+                ) : urlFetchStatus === "error" ? (
+                  <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
+                    <p className="font-medium">Could not fetch screenshot metadata</p>
+                    <p className="mt-1 text-xs">{urlFetchError || "URL fetch failed"}</p>
+                  </div>
+                ) : urlPreviewImage ? (
+                  <img
+                    src={urlPreviewImage}
+                    alt="Job posting preview"
+                    className="w-full max-h-56 object-contain rounded-md border bg-background"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+                    No preview image metadata found on this page.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Code2 className="h-4 w-4" />
+                  Raw HTML
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {urlFetchStatus === "loading" ? (
+                  <div className="flex h-48 items-center justify-center text-sm text-muted-foreground gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading HTML...
+                  </div>
+                ) : urlFetchStatus === "error" ? (
+                  <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
+                    <p className="font-medium">No HTML available</p>
+                    <p className="mt-1 text-xs">{urlFetchError || "URL fetch failed"}</p>
+                  </div>
+                ) : urlRawHtml ? (
+                  <div className="rounded-md border bg-muted/20 p-3 max-h-64 overflow-auto">
+                    <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words">{urlRawHtml}</pre>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+                    HTML content is empty.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Braces className="h-4 w-4" />
+                  Extracted JSON
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {urlParsedStatus === "loading" ? (
+                  <div className="flex h-48 items-center justify-center text-sm text-muted-foreground gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Extracting structured JSON...
+                  </div>
+                ) : urlParsedStatus === "error" ? (
+                  <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
+                    <p className="font-medium">JSON extraction failed</p>
+                    <p className="mt-1 text-xs">{urlParsedError || "Could not extract JSON"}</p>
+                  </div>
+                ) : urlParsedPreview ? (
+                  <div className="rounded-md border bg-muted/20 p-3 max-h-64 overflow-auto">
+                    <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words">
+                      {JSON.stringify(urlParsedPreview, null, 2)}
+                    </pre>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+                    JSON extraction has not started yet.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="md:col-span-3">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    Fit Generation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {urlAnalysisStatus === "loading" ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {analysisProgress?.message || "Generating fit analysis..."}
+                      </div>
+                      {analysisProgress && (
+                        <Progress
+                          value={(analysisProgress.phase / analysisProgress.totalPhases) * 100}
+                          className="h-2"
+                        />
+                      )}
+                    </div>
+                  ) : urlAnalysisStatus === "error" ? (
+                    <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
+                      <p className="font-medium">Fit generation failed</p>
+                      <p className="mt-1 text-xs">{urlAnalysisError || "Failed to generate fit analysis"}</p>
+                    </div>
+                  ) : urlAnalysisStatus === "success" ? (
+                    <div className="rounded-md border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-700 dark:text-green-300">
+                      Fit analysis generated successfully. See detailed results below.
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                      Run analysis to generate fit scoring.
+                    </div>
+                  )}
+                  {urlPreviewText && (
+                    <p className="text-xs text-muted-foreground mt-3 line-clamp-3">
+                      Text preview: {urlPreviewText}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Header title="Job Fit Analyzer" badge="Beta" />
       <div className="flex-1 overflow-auto p-8">
         <div className="mx-auto max-w-4xl space-y-6">
@@ -515,7 +692,7 @@ export default function JobFitPage() {
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="max-w-xs text-sm space-y-2 p-3">
                         <p className="font-semibold">How to provide the job posting</p>
-                        <p><strong>URL:</strong> Paste the direct job posting link. Works best on sites that don't block bots (e.g. company career pages). LinkedIn/Indeed may block access — use screenshots instead.</p>
+                        <p><strong>URL:</strong> Paste the direct job posting link. Works best on sites that do not block bots (e.g. company career pages). LinkedIn/Indeed may block access — use screenshots instead.</p>
                         <p><strong>Screenshot tips:</strong></p>
                         <ul className="list-disc ml-4 space-y-1">
                           <li>Capture the full posting including title, requirements, and description.</li>
@@ -572,28 +749,14 @@ export default function JobFitPage() {
                         value={jobPostingUrl}
                         onChange={(e) => {
                           setJobPostingUrl(e.target.value);
+                          resetUrlPipelineState();
                           setUrlPreviewImage(null);
                           setUrlPreviewText(null);
-                          setParsedJobPreview(null);
+                          setUrlRawHtml(null);
+                          setUrlParsedPreview(null);
                         }}
                         onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
                       />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 whitespace-nowrap"
-                        onClick={handleFetchUrlPreview}
-                        disabled={isFetchingUrlPreview || !jobPostingUrl.trim()}
-                      >
-                        {isFetchingUrlPreview ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                            Previewing...
-                          </>
-                        ) : (
-                          "Preview URL"
-                        )}
-                      </Button>
                       {jobPostingUrl && (
                         <Button
                           variant="ghost"
@@ -601,9 +764,11 @@ export default function JobFitPage() {
                           className="h-9 w-9 flex-shrink-0"
                           onClick={() => {
                             setJobPostingUrl("");
+                            resetUrlPipelineState();
                             setUrlPreviewImage(null);
                             setUrlPreviewText(null);
-                            setParsedJobPreview(null);
+                            setUrlRawHtml(null);
+                            setUrlParsedPreview(null);
                           }}
                         >
                           <X className="h-4 w-4" />
@@ -611,64 +776,9 @@ export default function JobFitPage() {
                       )}
                     </div>
 
-                    <div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePreviewParsedJobFromUrl}
-                        disabled={isPreviewingParsedJobFromUrl || !jobPostingUrl.trim()}
-                        className="gap-2"
-                      >
-                        {isPreviewingParsedJobFromUrl ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Parsing URL...
-                          </>
-                        ) : (
-                          "Show parsed preview"
-                        )}
-                      </Button>
-                    </div>
-
-                    {(urlPreviewImage || urlPreviewText) && (
-                      <div className="rounded-lg border bg-muted/20 overflow-hidden">
-                        <div className="px-3 py-2 border-b bg-muted/30">
-                          <p className="text-xs font-medium text-muted-foreground">URL Preview</p>
-                        </div>
-                        {urlPreviewImage ? (
-                          <img
-                            src={urlPreviewImage}
-                            alt="Job posting preview from URL"
-                            className="w-full max-h-44 object-contain bg-background"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="p-3 text-xs text-muted-foreground">
-                            No preview image metadata found for this page.
-                          </div>
-                        )}
-                        {urlPreviewText && (
-                          <div className="p-3 border-t">
-                            <p className="text-xs text-muted-foreground line-clamp-4">{urlPreviewText}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {parsedJobPreview && (
-                      <div className="rounded-lg border bg-muted/20 overflow-hidden">
-                        <div className="px-3 py-2 border-b bg-muted/30">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            Parsed Preview (comparison format)
-                          </p>
-                        </div>
-                        <div className="p-3">
-                          <pre className="text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap break-words">
-                            {JSON.stringify(parsedJobPreview, null, 2)}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Click <span className="font-medium">Analyze Job Fit</span> once to run all URL steps and open a full preview popup.
+                    </p>
 
                     <p className="text-xs text-muted-foreground">
                       Works best on company career pages. LinkedIn, Indeed, and similar sites often block
@@ -823,7 +933,7 @@ export default function JobFitPage() {
               ) : (
                 <>
                   <Sparkles className="h-5 w-5" />
-                  Analyze Job Fit
+                  {jobInputMode === "url" ? "Analyze URL Job Fit" : "Analyze Job Fit"}
                 </>
               )}
             </Button>

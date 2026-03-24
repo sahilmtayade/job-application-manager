@@ -872,6 +872,55 @@ Critical Rules:
             return cleaned
         return None
 
+    @staticmethod
+    def _extract_first_json_object(response: str) -> dict | None:
+        text = response.strip()
+
+        fenced = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
+        if fenced:
+            text = fenced.group(1).strip()
+
+        text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE).strip()
+        if "</think>" in text:
+            text = text.split("</think>", 1)[1].strip()
+
+        for start in range(len(text)):
+            if text[start] != "{":
+                continue
+
+            depth = 0
+            in_string = False
+            escape = False
+
+            for end in range(start, len(text)):
+                char = text[end]
+
+                if in_string:
+                    if escape:
+                        escape = False
+                    elif char == "\\":
+                        escape = True
+                    elif char == '"':
+                        in_string = False
+                    continue
+
+                if char == '"':
+                    in_string = True
+                elif char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[start : end + 1].strip()
+                        try:
+                            parsed = json.loads(candidate)
+                            if isinstance(parsed, dict):
+                                return parsed
+                        except json.JSONDecodeError:
+                            break
+
+        return None
+
     def set_ollama_url(self, url: str) -> None:
         """Set Ollama URL configuration"""
         self.config_service.set("ollama_url", url)
@@ -940,24 +989,24 @@ Critical Rules:
             return "page too short (likely blocked or empty)"
         return None
 
-    async def fetch_job_posting_url(self, url: str) -> tuple[bool, str, str, str | None]:
+    async def fetch_job_posting_url(self, url: str) -> tuple[bool, str, str, str | None, str | None]:
         """
         Fetch a job posting URL and return extracted text.
 
         Returns:
-            (success, error_message, extracted_text, preview_image_url)
-            On success: (True, "", text, preview_image_url_or_none)
-            On failure: (False, error_message, "", None)
+            (success, error_message, extracted_text, preview_image_url, raw_html)
+            On success: (True, "", text, preview_image_url_or_none, raw_html)
+            On failure: (False, error_message, "", None, None)
         """
         # Basic URL validation — only http/https allowed
         try:
             parsed = urlparse(url)
             if parsed.scheme not in ("http", "https"):
-                return False, "Only http:// and https:// URLs are supported.", "", None
+                return False, "Only http:// and https:// URLs are supported.", "", None, None
             if not parsed.netloc:
-                return False, "Invalid URL — missing domain.", "", None
+                return False, "Invalid URL — missing domain.", "", None, None
         except Exception:
-            return False, "Invalid URL.", "", None
+            return False, "Invalid URL.", "", None, None
 
         headers = {
             "User-Agent": (
@@ -982,6 +1031,7 @@ Critical Rules:
                     "The site returned 403 Forbidden — it likely blocks automated access. Try taking a screenshot instead.",
                     "",
                     None,
+                    None,
                 )
             if response.status_code == 429:
                 return (
@@ -989,12 +1039,14 @@ Critical Rules:
                     "The site is rate-limiting requests. Try again later or take a screenshot instead.",
                     "",
                     None,
+                    None,
                 )
             if response.status_code >= 400:
                 return (
                     False,
                     f"The site returned HTTP {response.status_code}. Try taking a screenshot instead.",
                     "",
+                    None,
                     None,
                 )
 
@@ -1010,21 +1062,24 @@ Critical Rules:
                     "Please take a screenshot of the job posting instead.",
                     "",
                     None,
+                    None,
                 )
 
             # Truncate to a reasonable size for the LLM
             if len(text) > 8000:
                 text = text[:8000]
 
-            return True, "", text, preview_image_url
+            raw_html = html[:150000] if len(html) > 150000 else html
+
+            return True, "", text, preview_image_url, raw_html
 
         except httpx.TimeoutException:
-            return False, "Request timed out. The site may be slow or blocking access.", "", None
+            return False, "Request timed out. The site may be slow or blocking access.", "", None, None
         except httpx.ConnectError:
-            return False, "Could not connect to the URL. Check the URL or your network.", "", None
+            return False, "Could not connect to the URL. Check the URL or your network.", "", None, None
         except Exception as e:
             logger.error(f"URL fetch error: {e}")
-            return False, f"Failed to fetch URL: {str(e)}", "", None
+            return False, f"Failed to fetch URL: {str(e)}", "", None, None
 
     async def analyze_job_posting_from_text(self, job_text: str) -> ExtractedJobData:
         """Analyze a job posting given as plain text and extract relevant fields."""
@@ -1054,18 +1109,12 @@ Critical Rules:
         if not response:
             raise ValueError("No response from LLM")
 
-        json_match = re.search(r"\{[\s\S]*\}", response)
-        if not json_match:
+        parsed = self._extract_first_json_object(response)
+        if not parsed:
             logger.warning(f"No JSON found in job requirements preview response: {response[:200]}")
             raise ValueError("Could not parse job requirements from screenshot")
 
-        try:
-            return json.loads(json_match.group())
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"JSON parse error in preview_job_requirements_from_image: {e}, response: {response[:200]}"
-            )
-            raise ValueError("Could not parse job requirements from screenshot")
+        return parsed
 
     async def preview_job_requirements_from_text(self, job_text: str) -> dict:
         """Parse the full job requirements object from URL-fetched job text."""
@@ -1078,20 +1127,14 @@ Critical Rules:
         if not response:
             raise ValueError("No response from LLM")
 
-        json_match = re.search(r"\{[\s\S]*\}", response)
-        if not json_match:
+        parsed = self._extract_first_json_object(response)
+        if not parsed:
             logger.warning(
                 f"No JSON found in job requirements preview text response: {response[:200]}"
             )
             raise ValueError("Could not parse job requirements from URL")
 
-        try:
-            return json.loads(json_match.group())
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"JSON parse error in preview_job_requirements_from_text: {e}, response: {response[:200]}"
-            )
-            raise ValueError("Could not parse job requirements from URL")
+        return parsed
 
     async def analyze_job_fit(self, job_posting_base64: str, resume_base64: str) -> FitAnalysis:
         """

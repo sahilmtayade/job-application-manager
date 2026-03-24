@@ -72,8 +72,8 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
-import { jobSearchApi, bannedCompaniesApi } from "@/lib/api";
-import type { JobListing } from "@/lib/types";
+import { jobSearchApi, bannedCompaniesApi, configApi } from "@/lib/api";
+import type { JobListing, ConfigList } from "@/lib/types";
 import { SCORE_GOOD, SCORE_MODERATE, getScoreColor } from "@/lib/constants/scoring";
 import {
   DEFAULT_ENABLED_SOURCES,
@@ -83,6 +83,7 @@ import {
 import {
   JobSearchToolbar,
   JobFiltersDropdown,
+  JobSearchSettings,
   DEFAULT_FILTERS,
   type FilterState,
 } from "@/components/job-search";
@@ -204,6 +205,28 @@ export default function JobSearchPage() {
   // Offset state
   const [searchOffset, setSearchOffset] = useState(0);
   const [offsetFilter, setOffsetFilter] = useState<number | "all">("all");
+
+  // On-the-fly search parameters state
+  const { data: config } = useQuery({
+    queryKey: ["config"],
+    queryFn: () => configApi.list(),
+  });
+  
+  const [candidateLoc, setCandidateLoc] = useState("");
+  const [candidateExp, setCandidateExp] = useState("");
+  const [jobSearchKeywords, setJobSearchKeywords] = useState("");
+  const [searchHoursOld, setSearchHoursOld] = useState("24");
+  const [configLoaded, setConfigLoaded] = useState(false);
+
+  useEffect(() => {
+    if (config?.config && !configLoaded) {
+      if (config.config.candidate_location) setCandidateLoc(config.config.candidate_location);
+      if (config.config.candidate_experience_years) setCandidateExp(config.config.candidate_experience_years);
+      if (config.config.job_search_keywords) setJobSearchKeywords(config.config.job_search_keywords);
+      if (config.config.job_search_hours_old) setSearchHoursOld(config.config.job_search_hours_old);
+      setConfigLoaded(true);
+    }
+  }, [config, configLoaded]);
 
   // Load filters from localStorage on mount
   useEffect(() => {
@@ -733,11 +756,13 @@ export default function JobSearchPage() {
                         setCurrentPage(1);
                       }}
               onSearch={() => {
-                handleSearch([...enabledSources], searchOffset);
+                const locations = candidateLoc ? candidateLoc.split(",").map(l => l.trim()) : undefined;
+                handleSearch([...enabledSources], searchOffset, locations, parseInt(searchHoursOld));
                 queryClient.invalidateQueries({ queryKey: ["job-search-offsets"] });
               }}
               onSearchAndAnalyze={() => {
-                handleSearchAndAnalyze([...enabledSources], searchOffset);
+                const locations = candidateLoc ? candidateLoc.split(",").map(l => l.trim()) : undefined;
+                handleSearchAndAnalyze([...enabledSources], searchOffset, locations, parseInt(searchHoursOld));
                 queryClient.invalidateQueries({ queryKey: ["job-search-offsets"] });
               }}
               offset={searchOffset}
@@ -767,32 +792,17 @@ export default function JobSearchPage() {
               lastSeenAt={savedResults?.last_seen_at}
             />
 
-            {/* Keywords Row */}
-            <div className="flex items-center gap-3 px-1">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              {hasKeywords ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                      <div className="flex flex-wrap gap-1.5">
-                        {keywordsData?.keywords.map((keyword, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {keyword}
-                          </Badge>
-                        ))}
-                      </div>
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent>Click to edit keywords in settings</TooltipContent>
-                </Tooltip>
-              ) : (
-                <Link href="/settings">
-                  <span className="text-sm text-amber-600 hover:text-amber-700">
-                    Set up search keywords in settings →
-                  </span>
-                </Link>
-              )}
-            </div>
+            <JobSearchSettings 
+              jobSearchKeywords={jobSearchKeywords}
+              setJobSearchKeywords={setJobSearchKeywords}
+              candidateLoc={candidateLoc}
+              setCandidateLoc={setCandidateLoc}
+              candidateExp={candidateExp}
+              setCandidateExp={setCandidateExp}
+              searchHoursOld={searchHoursOld}
+              setSearchHoursOld={setSearchHoursOld}
+              config={config}
+            />
 
             {/* Analysis Progress */}
             {isAnalyzing && analysisProgress && (
@@ -831,7 +841,7 @@ export default function JobSearchPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium flex items-center gap-2">
                         <Search className="h-4 w-4 animate-pulse" />
-                        Searching DMV area for entry-level positions...
+                        Searching {candidateLoc || "your saved locations"} for matching positions...
                       </span>
                       {searchProgress && (
                         <div className="flex items-center gap-3 text-muted-foreground">

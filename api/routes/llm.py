@@ -181,7 +181,7 @@ async def preview_job_requirements_from_url(request: PreviewJobRequirementsFromU
             detail=f"Model '{status['model']}' is not available. Please pull the model with: ollama pull {status['model']}",
         )
 
-    success, error, job_text, _ = await service.fetch_job_posting_url(request.job_posting_url)
+    success, error, job_text, _, _ = await service.fetch_job_posting_url(request.job_posting_url)
     if not success:
         raise HTTPException(status_code=422, detail=error)
 
@@ -319,7 +319,7 @@ async def fetch_job_url(request: FetchJobUrlRequest):
     Returns success/failure and a short text preview.
     """
     service = LLMService()
-    success, error, text, preview_image_url = await service.fetch_job_posting_url(request.url)
+    success, error, text, preview_image_url, raw_html = await service.fetch_job_posting_url(request.url)
     if not success:
         return FetchJobUrlResponse(success=False, error=error)
     preview = text[:300].strip() if text else ""
@@ -327,6 +327,7 @@ async def fetch_job_url(request: FetchJobUrlRequest):
         success=True,
         text_preview=preview,
         preview_image_url=preview_image_url,
+        raw_html=raw_html,
     )
 
 
@@ -350,7 +351,7 @@ async def analyze_job_fit_from_url_stream(request: AnalyzeFitFromUrlRequest):
         )
 
     # Fetch the URL up-front so we can return an error immediately if it fails
-    success, error, job_text, _ = await service.fetch_job_posting_url(request.job_posting_url)
+    success, error, job_text, _, _ = await service.fetch_job_posting_url(request.job_posting_url)
     if not success:
         raise HTTPException(status_code=422, detail=error)
 

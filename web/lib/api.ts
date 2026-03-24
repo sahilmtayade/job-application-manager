@@ -538,7 +538,7 @@ export const llmApi = {
     return response.data;
   },
 
-  fetchJobUrl: async (url: string): Promise<{ success: boolean; error?: string; text_preview?: string; preview_image_url?: string }> => {
+  fetchJobUrl: async (url: string): Promise<{ success: boolean; error?: string; text_preview?: string; preview_image_url?: string; raw_html?: string }> => {
     return fetchApi("/api/llm/fetch-job-url", {
       method: "POST",
       body: JSON.stringify({ url }),

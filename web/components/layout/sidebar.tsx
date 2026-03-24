@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Sparkles,
   Search,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/lib/sidebar-context";
@@ -31,6 +32,7 @@ const navigation = [
   { name: "Banned", href: "/banned", icon: ShieldAlert },
   { name: "Goals", href: "/goals", icon: Target },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "Profile", href: "/profile", icon: User },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

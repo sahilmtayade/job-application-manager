@@ -579,6 +579,7 @@ class FetchJobUrlResponse(BaseModel):
     error: str | None = None
     text_preview: str | None = None  # First 300 chars for debug/display
     preview_image_url: str | None = None
+    raw_html: str | None = None
 
 
 class PreviewJobRequirementsRequest(BaseModel):
