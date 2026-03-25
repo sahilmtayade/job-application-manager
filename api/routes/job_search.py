@@ -43,6 +43,7 @@ class JobListingResponse(BaseModel):
     id: int | None = None
     title: str
     company: str
+    company_logo: str | None = None
     location: str | None = None
     date_posted: str | None = None
     job_url: str
@@ -205,7 +206,10 @@ async def search_jobs_stream(request: JobSearchRequest):
 
             # Stream search results
             for batch in search_generator:
-                if batch["type"] == "searching":
+                if batch["type"] == "init":
+                    yield f"data: {json.dumps(batch)}\n\n"
+
+                elif batch["type"] == "searching":
                     # Signal that we're searching
                     elapsed_ms = int((time.time() - start_time) * 1000)
                     batch["elapsed_ms"] = elapsed_ms
@@ -340,6 +344,7 @@ async def get_saved_results(hours: int = 24, include_hidden: bool = False):
                     id=r.id,
                     title=r.title,
                     company=r.company,
+                    company_logo=r.company_logo,
                     location=r.location,
                     date_posted=r.date_posted,
                     job_url=r.job_url,

@@ -1,46 +1,65 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { useJobSearch } from "@/lib/job-search-context";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow, parseISO } from "date-fns";
+import Image from "next/image";
 import {
-  Search,
-  Loader2,
-  ExternalLink,
-  MapPin,
-  Building2,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Brain,
-  EyeOff,
-  Eye,
   AlertTriangle,
+  AlignLeft,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Brain,
+  Building2,
+  CheckCheck,
   CheckCircle2,
-  XCircle,
-  Sparkles,
-  FileText,
   ChevronDown,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
-  Send,
-  CheckCheck,
-  RotateCcw,
-  AlignLeft,
+  ChevronUp,
   Copy,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FileText,
+  Loader2,
+  MapPin,
+  RotateCcw,
+  Search,
+  Send,
+  Sparkles,
+  XCircle,
 } from "lucide-react";
-import Link from "next/link";
-import { formatDistanceToNow, parseISO } from "date-fns";
+import { Fragment, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
+import { toast } from "sonner";
 
 import { Header } from "@/components/layout/header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -55,43 +74,35 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuTrigger,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
 
-import { jobSearchApi, bannedCompaniesApi, configApi } from "@/lib/api";
-import type { JobListing, ConfigList } from "@/lib/types";
-import { SCORE_GOOD, SCORE_MODERATE, getScoreColor } from "@/lib/constants/scoring";
+import {
+  DEFAULT_FILTERS,
+  JobFiltersDropdown,
+  JobSearchQueue,
+  JobSearchSettings,
+  JobSearchToolbar,
+  type FilterState,
+} from "@/components/job-search";
+import { bannedCompaniesApi, configApi, jobSearchApi } from "@/lib/api";
 import {
   DEFAULT_ENABLED_SOURCES,
   SITE_COLORS,
   formatSiteName,
 } from "@/lib/constants/job-sources";
 import {
-  JobSearchToolbar,
-  JobFiltersDropdown,
-  JobSearchSettings,
-  DEFAULT_FILTERS,
-  type FilterState,
-} from "@/components/job-search";
-import { Ban, Trash2, AlertOctagon, SlidersHorizontal, Eraser, Download } from "lucide-react";
+  SCORE_GOOD,
+  SCORE_MODERATE,
+  getScoreColor,
+} from "@/lib/constants/scoring";
+import type { JobListing } from "@/lib/types";
+import { API_URL } from "@/lib/api";
+import { getCleanLogoUrl } from "@/lib/utils";
+import { AlertOctagon, Ban, Download, Eraser, Trash2 } from "lucide-react";
 
 function formatSalary(min?: number | null, max?: number | null): string | null {
   if (!min && !max) return null;
-  const formatNum = (n: number) => (n >= 1000 ? `$${(n / 1000).toFixed(0)}k` : `$${n}`);
+  const formatNum = (n: number) =>
+    n >= 1000 ? `$${(n / 1000).toFixed(0)}k` : `$${n}`;
   if (min && max) return `${formatNum(min)} - ${formatNum(max)}`;
   if (min) return `${formatNum(min)}+`;
   if (max) return `Up to ${formatNum(max)}`;
@@ -103,6 +114,48 @@ function getScoreIcon(score: number | null | undefined) {
   if (score >= SCORE_GOOD) return <CheckCircle2 className="h-3 w-3" />;
   if (score >= SCORE_MODERATE) return <AlertTriangle className="h-3 w-3" />;
   return <XCircle className="h-3 w-3" />;
+}
+
+function formatJobDescription(text: string | null | undefined): string {
+  if (!text) return "";
+  let formatted = text;
+
+  // Many existing jobs in the DB were scraped with a regex that removed all newlines
+  // and replaced them with single spaces. This tries to heuristically restore them.
+  if (formatted.split("\n").length < 3) {
+    // 1. Add double newlines before bolded text assuming they are headings
+    formatted = formatted.replace(/ (\*\*[A-Z][^*]+\*\*)/g, "\n\n$1");
+
+    // 2. Add newlines before bullet points
+    formatted = formatted.replace(/ ([•·])\s/g, "\n- ");
+
+    // 3. Add newlines before common unbolded headings
+    const commonHeadings = [
+      "About the Role",
+      "Requirements",
+      "Qualifications",
+      "Responsibilities",
+      "What you'll do",
+      "What you will do",
+      "Who you are",
+      "Benefits",
+      "Perks",
+      "Why This Work Is Different",
+      "About Us",
+      "We are looking for",
+      "What we're looking for",
+    ];
+    for (const heading of commonHeadings) {
+      // Look for the heading preceded by a standard sentence ending (.?!) and a space.
+      const regex = new RegExp(
+        `([.!?])\\s+((?:\\*\\*)?${heading}[:]*(?:\\*\\*)?\\s)`,
+        "gi",
+      );
+      formatted = formatted.replace(regex, "$1\n\n**$2**\n\n");
+    }
+  }
+
+  return formatted;
 }
 
 function formatEta(etaMs: number | undefined): string {
@@ -121,15 +174,31 @@ function formatEta(etaMs: number | undefined): string {
   return `~${hours}h ${remainingMinutes}m remaining`;
 }
 
-function exportJobsToCSV(jobs: JobListing[], filename: string = "job-listings.csv") {
+function exportJobsToCSV(
+  jobs: JobListing[],
+  filename: string = "job-listings.csv",
+) {
   // CSV header
   const headers = [
-    "ID", "Title", "Company", "Location", "Source", "Posted", "Score", "Analysis",
-    "Matched Skills", "Missing Skills", "Salary Min", "Salary Max", "Applied", "Hidden", "URL"
+    "ID",
+    "Title",
+    "Company",
+    "Location",
+    "Source",
+    "Posted",
+    "Score",
+    "Analysis",
+    "Matched Skills",
+    "Missing Skills",
+    "Salary Min",
+    "Salary Max",
+    "Applied",
+    "Hidden",
+    "URL",
   ];
 
   // Convert jobs to CSV rows
-  const rows = jobs.map(job => [
+  const rows = jobs.map((job) => [
     job.id ?? "",
     `"${(job.title || "").replace(/"/g, '""')}"`,
     `"${(job.company || "").replace(/"/g, '""')}"`,
@@ -147,7 +216,10 @@ function exportJobsToCSV(jobs: JobListing[], filename: string = "job-listings.cs
     job.job_url || "",
   ]);
 
-  const csvContent = [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
+  const csvContent = [
+    headers.join(","),
+    ...rows.map((row) => row.join(",")),
+  ].join("\n");
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -159,11 +231,75 @@ function exportJobsToCSV(jobs: JobListing[], filename: string = "job-listings.cs
   URL.revokeObjectURL(url);
 }
 
-type SortField = "title" | "company" | "location" | "date_posted" | "site_source" | "salary" | "llm_score" | "last_seen_at";
+type SortField =
+  | "title"
+  | "company"
+  | "location"
+  | "date_posted"
+  | "site_source"
+  | "salary"
+  | "llm_score"
+  | "last_seen_at";
 type SortDirection = "asc" | "desc";
 
 const ITEMS_PER_PAGE = 20;
 const FILTERS_STORAGE_KEY = "job-search-filters";
+
+function AnimatedBanButton({
+  company,
+  onBan,
+  isPending,
+}: {
+  company: string;
+  onBan: (company: string) => void;
+  isPending: boolean;
+}) {
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    if (isConfirming) {
+      timeout = setTimeout(() => setIsConfirming(false), 3000);
+    }
+    return () => clearTimeout(timeout);
+  }, [isConfirming]);
+
+  useEffect(() => {
+    setIsConfirming(false);
+  }, [company]);
+
+  return (
+    <Button
+      variant={isConfirming ? "destructive" : "outline"}
+      className={`relative transition-all duration-300 ease-out overflow-hidden w-40 ${!isConfirming ? "border-red-200 hover:border-red-300 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/30" : ""}`}
+      onClick={() => {
+        if (isConfirming) {
+          onBan(company);
+        } else {
+          setIsConfirming(true);
+        }
+      }}
+      disabled={isPending}
+    >
+      <div
+        className={`absolute inset-0 flex items-center justify-center transition-transform duration-300 transform ${isConfirming ? "-translate-y-full opacity-0" : "translate-y-0 opacity-100"}`}
+      >
+        <Ban className="h-4 w-4 mr-2 text-red-500" />
+        <span className="text-red-600 dark:text-red-400">Ban Company</span>
+      </div>
+      <div
+        className={`absolute inset-0 flex items-center justify-center transition-transform duration-300 transform ${isConfirming ? "translate-y-0 opacity-100" : "translate-y-full opacity-0"}`}
+      >
+        {isPending ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <Ban className="h-4 w-4 mr-2" />
+        )}
+        <span>Sure?</span>
+      </div>
+    </Button>
+  );
+}
 
 export default function JobSearchPage() {
   const queryClient = useQueryClient();
@@ -187,7 +323,9 @@ export default function JobSearchPage() {
   const [sortField, setSortField] = useState<SortField>("llm_score");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  const [enabledSources, setEnabledSources] = useState<Set<string>>(DEFAULT_ENABLED_SOURCES);
+  const [enabledSources, setEnabledSources] = useState<Set<string>>(
+    DEFAULT_ENABLED_SOURCES,
+  );
   const [filtersLoaded, setFiltersLoaded] = useState(false);
 
   // UI-only state (not persisted)
@@ -195,6 +333,8 @@ export default function JobSearchPage() {
   const [analyzeCount, setAnalyzeCount] = useState(20);
   const [analyzeAll, setAnalyzeAll] = useState(false);
   const [notesDialogJob, setNotesDialogJob] = useState<JobListing | null>(null);
+  const [descriptionDialogJob, setDescriptionDialogJob] =
+    useState<JobListing | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
@@ -211,7 +351,7 @@ export default function JobSearchPage() {
     queryKey: ["config"],
     queryFn: () => configApi.list(),
   });
-  
+
   const [candidateLoc, setCandidateLoc] = useState("");
   const [candidateExp, setCandidateExp] = useState("");
   const [jobSearchKeywords, setJobSearchKeywords] = useState("");
@@ -220,10 +360,14 @@ export default function JobSearchPage() {
 
   useEffect(() => {
     if (config?.config && !configLoaded) {
-      if (config.config.candidate_location) setCandidateLoc(config.config.candidate_location);
-      if (config.config.candidate_experience_years) setCandidateExp(config.config.candidate_experience_years);
-      if (config.config.job_search_keywords) setJobSearchKeywords(config.config.job_search_keywords);
-      if (config.config.job_search_hours_old) setSearchHoursOld(config.config.job_search_hours_old);
+      if (config.config.candidate_location)
+        setCandidateLoc(config.config.candidate_location);
+      if (config.config.candidate_experience_years)
+        setCandidateExp(config.config.candidate_experience_years);
+      if (config.config.job_search_keywords)
+        setJobSearchKeywords(config.config.job_search_keywords);
+      if (config.config.job_search_hours_old)
+        setSearchHoursOld(config.config.job_search_hours_old);
       setConfigLoaded(true);
     }
   }, [config, configLoaded]);
@@ -234,24 +378,45 @@ export default function JobSearchPage() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.searchQuery !== undefined) setSearchQuery(parsed.searchQuery);
+        if (parsed.searchQuery !== undefined)
+          setSearchQuery(parsed.searchQuery);
         if (parsed.sortField !== undefined) setSortField(parsed.sortField);
-        if (parsed.sortDirection !== undefined) setSortDirection(parsed.sortDirection);
+        if (parsed.sortDirection !== undefined)
+          setSortDirection(parsed.sortDirection);
         if (parsed.filters !== undefined) {
           // Merge with defaults to handle new filter fields added over time
           setFilters({
             ...DEFAULT_FILTERS,
             ...parsed.filters,
             // Deep merge nested objects to preserve new sub-fields
-            analysisStatus: { ...DEFAULT_FILTERS.analysisStatus, ...parsed.filters.analysisStatus },
-            applicationStatus: { ...DEFAULT_FILTERS.applicationStatus, ...parsed.filters.applicationStatus },
-            appliedCompany: { ...DEFAULT_FILTERS.appliedCompany, ...parsed.filters.appliedCompany },
-            visibility: { ...DEFAULT_FILTERS.visibility, ...parsed.filters.visibility },
-            matchQuality: { ...DEFAULT_FILTERS.matchQuality, ...parsed.filters.matchQuality },
-            description: { ...DEFAULT_FILTERS.description, ...parsed.filters.description },
+            analysisStatus: {
+              ...DEFAULT_FILTERS.analysisStatus,
+              ...parsed.filters.analysisStatus,
+            },
+            applicationStatus: {
+              ...DEFAULT_FILTERS.applicationStatus,
+              ...parsed.filters.applicationStatus,
+            },
+            appliedCompany: {
+              ...DEFAULT_FILTERS.appliedCompany,
+              ...parsed.filters.appliedCompany,
+            },
+            visibility: {
+              ...DEFAULT_FILTERS.visibility,
+              ...parsed.filters.visibility,
+            },
+            matchQuality: {
+              ...DEFAULT_FILTERS.matchQuality,
+              ...parsed.filters.matchQuality,
+            },
+            description: {
+              ...DEFAULT_FILTERS.description,
+              ...parsed.filters.description,
+            },
           });
         }
-        if (parsed.enabledSources !== undefined) setEnabledSources(new Set(parsed.enabledSources));
+        if (parsed.enabledSources !== undefined)
+          setEnabledSources(new Set(parsed.enabledSources));
       } catch {
         // Ignore parse errors
       }
@@ -270,9 +435,16 @@ export default function JobSearchPage() {
         sortDirection,
         filters,
         enabledSources: [...enabledSources],
-      })
+      }),
     );
-  }, [filtersLoaded, searchQuery, sortField, sortDirection, filters, enabledSources]);
+  }, [
+    filtersLoaded,
+    searchQuery,
+    sortField,
+    sortDirection,
+    filters,
+    enabledSources,
+  ]);
 
   // Fetch keywords
   const { data: keywordsData, isLoading: isLoadingKeywords } = useQuery({
@@ -363,11 +535,17 @@ export default function JobSearchPage() {
 
   // Ban company mutation
   const banCompanyMutation = useMutation({
-    mutationFn: (companyName: string) => bannedCompaniesApi.create({ name: companyName, reason: "Banned from job search" }),
+    mutationFn: (companyName: string) =>
+      bannedCompaniesApi.create({
+        name: companyName,
+        reason: "Banned from job search",
+      }),
     onSuccess: (_, companyName) => {
       queryClient.invalidateQueries({ queryKey: ["job-search-results"] });
       queryClient.invalidateQueries({ queryKey: ["banned-companies"] });
-      toast.success(`"${companyName}" added to ban list. Future searches will exclude this company.`);
+      toast.success(
+        `"${companyName}" added to ban list. Future searches will exclude this company.`,
+      );
       setExpandedJobId(null);
     },
     onError: (error) => {
@@ -380,7 +558,9 @@ export default function JobSearchPage() {
     mutationFn: () => jobSearchApi.clearResults(),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["job-search-results"] });
-      queryClient.invalidateQueries({ queryKey: ["job-search-analysis-status"] });
+      queryClient.invalidateQueries({
+        queryKey: ["job-search-analysis-status"],
+      });
       toast.success(data.message || "All job listings cleared");
       setClearDialogOpen(false);
       setClearConfirmText("");
@@ -396,7 +576,9 @@ export default function JobSearchPage() {
     mutationFn: (jobIds?: number[]) => jobSearchApi.clearAnalysis(jobIds),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["job-search-results"] });
-      queryClient.invalidateQueries({ queryKey: ["job-search-analysis-status"] });
+      queryClient.invalidateQueries({
+        queryKey: ["job-search-analysis-status"],
+      });
       toast.success(data.message || "Analysis cleared");
       setClearAnalysisDialogOpen(false);
       setClearAnalysisConfirmText("");
@@ -460,7 +642,9 @@ export default function JobSearchPage() {
     mutationFn: (jobIds: number[]) => jobSearchApi.bulkDelete(jobIds),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["job-search-results"] });
-      queryClient.invalidateQueries({ queryKey: ["job-search-analysis-status"] });
+      queryClient.invalidateQueries({
+        queryKey: ["job-search-analysis-status"],
+      });
       toast.success(data.message);
       setSelectedJobIds(new Set());
     },
@@ -469,15 +653,18 @@ export default function JobSearchPage() {
     },
   });
 
-  const hasKeywords = keywordsData?.keywords && keywordsData.keywords.length > 0;
+  const hasKeywords =
+    keywordsData?.keywords && keywordsData.keywords.length > 0;
   const jobs = savedResults?.jobs || [];
-  const hasResults = (savedResults?.total ?? 0) > 0;  // Use total from API, not filtered count
+  const hasResults = (savedResults?.total ?? 0) > 0; // Use total from API, not filtered count
   const unanalyzedCount = savedResults?.unanalyzed_count || 0;
   const analyzedCount = savedResults?.analyzed_count || 0;
 
   // Get IDs of all analyzed jobs for re-analysis
   const analyzedJobIds = jobs
-    .filter((job) => job.llm_score !== null && job.llm_score !== undefined && job.id)
+    .filter(
+      (job) => job.llm_score !== null && job.llm_score !== undefined && job.id,
+    )
     .map((job) => job.id!);
 
   // Handle LLM analysis
@@ -497,7 +684,13 @@ export default function JobSearchPage() {
     const desc = job.description.trim();
     if (desc.length < 50) return false;
     const lower = desc.toLowerCase();
-    if (lower === "no description available" || lower === "no description" || lower === "n/a" || lower === "none") return false;
+    if (
+      lower === "no description available" ||
+      lower === "no description" ||
+      lower === "n/a" ||
+      lower === "none"
+    )
+      return false;
     return true;
   };
 
@@ -521,7 +714,7 @@ export default function JobSearchPage() {
         (job) =>
           job.title.toLowerCase().includes(query) ||
           job.company.toLowerCase().includes(query) ||
-          (job.location?.toLowerCase().includes(query) ?? false)
+          (job.location?.toLowerCase().includes(query) ?? false),
       );
     }
 
@@ -529,23 +722,27 @@ export default function JobSearchPage() {
     filtered = filtered.filter((job) => {
       // Analysis Status: job matches if it's analyzed AND that's checked, OR unanalyzed AND that's checked
       const isAnalyzed = job.llm_score !== null && job.llm_score !== undefined;
-      const matchesAnalysis = (isAnalyzed && filters.analysisStatus.analyzed) ||
-                              (!isAnalyzed && filters.analysisStatus.unanalyzed);
+      const matchesAnalysis =
+        (isAnalyzed && filters.analysisStatus.analyzed) ||
+        (!isAnalyzed && filters.analysisStatus.unanalyzed);
       if (!matchesAnalysis) return false;
 
       // Application Status (specific job applied)
-      const matchesApplication = (job.is_applied && filters.applicationStatus.applied) ||
-                                  (!job.is_applied && filters.applicationStatus.unapplied);
+      const matchesApplication =
+        (job.is_applied && filters.applicationStatus.applied) ||
+        (!job.is_applied && filters.applicationStatus.unapplied);
       if (!matchesApplication) return false;
 
       // Applied Company (any job at this company)
-      const matchesAppliedCompany = (job.applied_company && filters.appliedCompany.applied) ||
-                                     (!job.applied_company && filters.appliedCompany.notApplied);
+      const matchesAppliedCompany =
+        (job.applied_company && filters.appliedCompany.applied) ||
+        (!job.applied_company && filters.appliedCompany.notApplied);
       if (!matchesAppliedCompany) return false;
 
       // Visibility
-      const matchesVisibility = (job.is_hidden && filters.visibility.hidden) ||
-                                 (!job.is_hidden && filters.visibility.visible);
+      const matchesVisibility =
+        (job.is_hidden && filters.visibility.hidden) ||
+        (!job.is_hidden && filters.visibility.visible);
       if (!matchesVisibility) return false;
 
       // Match Quality (only applies to analyzed jobs)
@@ -553,8 +750,12 @@ export default function JobSearchPage() {
         const score = job.llm_score!;
         const matchesQuality =
           (score >= SCORE_GOOD && filters.matchQuality.good) ||
-          (score >= SCORE_MODERATE && score < SCORE_GOOD && filters.matchQuality.moderate) ||
-          (score < SCORE_MODERATE && !job.is_mismatch && filters.matchQuality.poor) ||
+          (score >= SCORE_MODERATE &&
+            score < SCORE_GOOD &&
+            filters.matchQuality.moderate) ||
+          (score < SCORE_MODERATE &&
+            !job.is_mismatch &&
+            filters.matchQuality.poor) ||
           (job.is_mismatch && filters.matchQuality.mismatch);
         if (!matchesQuality) return false;
       }
@@ -562,8 +763,9 @@ export default function JobSearchPage() {
 
       // Description
       const hasDesc = hasValidDescription(job);
-      const matchesDescription = (hasDesc && filters.description.hasDescription) ||
-                                  (!hasDesc && filters.description.noDescription);
+      const matchesDescription =
+        (hasDesc && filters.description.hasDescription) ||
+        (!hasDesc && filters.description.noDescription);
       if (!matchesDescription) return false;
 
       return true;
@@ -602,7 +804,9 @@ export default function JobSearchPage() {
           comparison = (a.llm_score ?? -1) - (b.llm_score ?? -1);
           break;
         case "last_seen_at":
-          comparison = (a.last_seen_at || "").localeCompare(b.last_seen_at || "");
+          comparison = (a.last_seen_at || "").localeCompare(
+            b.last_seen_at || "",
+          );
           break;
       }
       return sortDirection === "asc" ? comparison : -comparison;
@@ -613,7 +817,7 @@ export default function JobSearchPage() {
   const totalPages = Math.ceil(filteredAndSortedJobs.length / ITEMS_PER_PAGE);
   const paginatedJobs = filteredAndSortedJobs.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+    currentPage * ITEMS_PER_PAGE,
   );
 
   // Selection helpers
@@ -629,8 +833,11 @@ export default function JobSearchPage() {
     });
   };
 
-  const pageJobIds = paginatedJobs.filter((job) => job.id).map((job) => job.id!);
-  const allOnPageSelected = pageJobIds.length > 0 && pageJobIds.every((id) => selectedJobIds.has(id));
+  const pageJobIds = paginatedJobs
+    .filter((job) => job.id)
+    .map((job) => job.id!);
+  const allOnPageSelected =
+    pageJobIds.length > 0 && pageJobIds.every((id) => selectedJobIds.has(id));
   const someOnPageSelected = pageJobIds.some((id) => selectedJobIds.has(id));
 
   const toggleSelectAllOnPage = () => {
@@ -678,7 +885,7 @@ export default function JobSearchPage() {
   const updateFilter = <K extends keyof FilterState>(
     category: K,
     option: keyof FilterState[K],
-    value: boolean
+    value: boolean,
   ) => {
     setFilters((prev) => ({
       ...prev,
@@ -713,16 +920,35 @@ export default function JobSearchPage() {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortField(field);
-      setSortDirection(field === "llm_score" || field === "date_posted" || field === "last_seen_at" ? "desc" : "asc");
+      setSortDirection(
+        field === "llm_score" ||
+          field === "date_posted" ||
+          field === "last_seen_at"
+          ? "desc"
+          : "asc",
+      );
     }
   };
 
-  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
-    <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort(field)}>
+  const SortableHeader = ({
+    field,
+    children,
+  }: {
+    field: SortField;
+    children: React.ReactNode;
+  }) => (
+    <TableHead
+      className="cursor-pointer select-none hover:bg-muted/50"
+      onClick={() => handleSort(field)}
+    >
       <div className="flex items-center gap-2">
         {children}
         {sortField === field ? (
-          sortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+          sortDirection === "asc" ? (
+            <ArrowUp className="h-4 w-4" />
+          ) : (
+            <ArrowDown className="h-4 w-4" />
+          )
         ) : (
           <ArrowUpDown className="h-4 w-4 opacity-50" />
         )}
@@ -747,23 +973,41 @@ export default function JobSearchPage() {
               hasKeywords={!!hasKeywords}
               enabledSources={enabledSources}
               onSourceToggle={(sourceId, enabled) => {
-                        setEnabledSources((prev) => {
-                          const next = new Set(prev);
+                setEnabledSources((prev) => {
+                  const next = new Set(prev);
                   if (enabled) next.add(sourceId);
                   else next.delete(sourceId);
-                          return next;
-                        });
-                        setCurrentPage(1);
-                      }}
+                  return next;
+                });
+                setCurrentPage(1);
+              }}
               onSearch={() => {
-                const locations = candidateLoc ? candidateLoc.split(",").map(l => l.trim()) : undefined;
-                handleSearch([...enabledSources], searchOffset, locations, parseInt(searchHoursOld));
-                queryClient.invalidateQueries({ queryKey: ["job-search-offsets"] });
+                const locations = candidateLoc
+                  ? candidateLoc.split(",").map((l) => l.trim())
+                  : undefined;
+                handleSearch(
+                  [...enabledSources],
+                  searchOffset,
+                  locations,
+                  parseInt(searchHoursOld),
+                );
+                queryClient.invalidateQueries({
+                  queryKey: ["job-search-offsets"],
+                });
               }}
               onSearchAndAnalyze={() => {
-                const locations = candidateLoc ? candidateLoc.split(",").map(l => l.trim()) : undefined;
-                handleSearchAndAnalyze([...enabledSources], searchOffset, locations, parseInt(searchHoursOld));
-                queryClient.invalidateQueries({ queryKey: ["job-search-offsets"] });
+                const locations = candidateLoc
+                  ? candidateLoc.split(",").map((l) => l.trim())
+                  : undefined;
+                handleSearchAndAnalyze(
+                  [...enabledSources],
+                  searchOffset,
+                  locations,
+                  parseInt(searchHoursOld),
+                );
+                queryClient.invalidateQueries({
+                  queryKey: ["job-search-offsets"],
+                });
               }}
               offset={searchOffset}
               onOffsetChange={setSearchOffset}
@@ -792,7 +1036,7 @@ export default function JobSearchPage() {
               lastSeenAt={savedResults?.last_seen_at}
             />
 
-            <JobSearchSettings 
+            <JobSearchSettings
               jobSearchKeywords={jobSearchKeywords}
               setJobSearchKeywords={setJobSearchKeywords}
               candidateLoc={candidateLoc}
@@ -812,7 +1056,14 @@ export default function JobSearchPage() {
                     <div className="flex items-center gap-4">
                       <Sparkles className="h-4 w-4 animate-pulse text-violet-500" />
                       <div className="flex-1">
-                        <Progress value={(analysisProgress.current / analysisProgress.total) * 100} className="h-1.5" />
+                        <Progress
+                          value={
+                            (analysisProgress.current /
+                              analysisProgress.total) *
+                            100
+                          }
+                          className="h-1.5"
+                        />
                       </div>
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
                         {analysisProgress.current}/{analysisProgress.total}
@@ -820,7 +1071,8 @@ export default function JobSearchPage() {
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span className="truncate">
-                        {analysisProgress.jobTitle && `Analyzing: ${analysisProgress.jobTitle.slice(0, 40)}...`}
+                        {analysisProgress.jobTitle &&
+                          `Analyzing: ${analysisProgress.jobTitle.slice(0, 40)}...`}
                       </span>
                       {analysisProgress.etaMs && (
                         <span className="text-violet-600 font-medium whitespace-nowrap ml-2">
@@ -841,18 +1093,23 @@ export default function JobSearchPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium flex items-center gap-2">
                         <Search className="h-4 w-4 animate-pulse" />
-                        Searching {candidateLoc || "your saved locations"} for matching positions...
+                        Searching {candidateLoc || "your saved locations"} for
+                        matching positions...
                       </span>
                       {searchProgress && (
                         <div className="flex items-center gap-3 text-muted-foreground">
-                          <span>{searchProgress.progress} / {searchProgress.total} searches</span>
+                          <span>
+                            {searchProgress.progress} / {searchProgress.total}{" "}
+                            searches
+                          </span>
                           {searchProgress.etaMs ? (
                             <span className="text-violet-600 font-medium">
                               {formatEta(searchProgress.etaMs)}
                             </span>
                           ) : searchProgress.elapsedMs ? (
                             <span className="text-muted-foreground text-xs">
-                              {Math.round(searchProgress.elapsedMs / 1000)}s elapsed
+                              {Math.round(searchProgress.elapsedMs / 1000)}s
+                              elapsed
                             </span>
                           ) : null}
                         </div>
@@ -861,13 +1118,21 @@ export default function JobSearchPage() {
                     {searchProgress && (
                       <>
                         <Progress
-                          value={(searchProgress.progress / searchProgress.total) * 100}
+                          value={
+                            (searchProgress.progress / searchProgress.total) *
+                            100
+                          }
                           className="h-2"
                         />
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span className="truncate">
-                            {searchProgress.site && <span className="text-violet-600 font-medium">[{searchProgress.site}]</span>}{" "}
-                            Searching: &quot;{searchProgress.keyword}&quot; in {searchProgress.location}
+                            {searchProgress.site && (
+                              <span className="text-violet-600 font-medium">
+                                [{searchProgress.site}]
+                              </span>
+                            )}{" "}
+                            Searching: &quot;{searchProgress.keyword}&quot; in{" "}
+                            {searchProgress.location}
                           </span>
                           <span className="text-green-600 font-medium whitespace-nowrap ml-2">
                             {searchProgress.found} jobs found
@@ -879,6 +1144,8 @@ export default function JobSearchPage() {
                 </CardContent>
               </Card>
             )}
+
+            <JobSearchQueue />
 
             {/* Results Table */}
             {!isSearching && (
@@ -901,8 +1168,13 @@ export default function JobSearchPage() {
                     {offsetsData && offsetsData.offsets.length > 0 && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" className="gap-1.5">
-                            Offset: {offsetFilter === "all" ? "All" : offsetFilter}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                          >
+                            Offset:{" "}
+                            {offsetFilter === "all" ? "All" : offsetFilter}
                             <ChevronDown className="h-3 w-3" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -944,7 +1216,9 @@ export default function JobSearchPage() {
                             size="sm"
                             onClick={() => {
                               exportJobsToCSV(filteredAndSortedJobs);
-                              toast.success(`Exported ${filteredAndSortedJobs.length} jobs to CSV`);
+                              toast.success(
+                                `Exported ${filteredAndSortedJobs.length} jobs to CSV`,
+                              );
                             }}
                             className="gap-1.5"
                           >
@@ -952,7 +1226,9 @@ export default function JobSearchPage() {
                             Export
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Export filtered results to CSV</TooltipContent>
+                        <TooltipContent>
+                          Export filtered results to CSV
+                        </TooltipContent>
                       </Tooltip>
                     )}
                   </div>
@@ -963,7 +1239,8 @@ export default function JobSearchPage() {
                   <div className="flex items-center justify-between p-3 bg-violet-50 dark:bg-violet-950/30 rounded-lg border border-violet-200 dark:border-violet-800">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-violet-700 dark:text-violet-300">
-                        {selectedJobIds.size} job{selectedJobIds.size !== 1 ? "s" : ""} selected
+                        {selectedJobIds.size} job
+                        {selectedJobIds.size !== 1 ? "s" : ""} selected
                       </span>
                       <Button
                         variant="ghost"
@@ -984,17 +1261,23 @@ export default function JobSearchPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent>
-                          <DropdownMenuLabel>Change Visibility</DropdownMenuLabel>
+                          <DropdownMenuLabel>
+                            Change Visibility
+                          </DropdownMenuLabel>
                           <DropdownMenuSeparator />
                           <DropdownMenuCheckboxItem
-                            onClick={() => bulkHideMutation.mutate([...selectedJobIds])}
+                            onClick={() =>
+                              bulkHideMutation.mutate([...selectedJobIds])
+                            }
                             disabled={bulkHideMutation.isPending}
                           >
                             <EyeOff className="h-4 w-4 mr-2" />
                             Hide Selected
                           </DropdownMenuCheckboxItem>
                           <DropdownMenuCheckboxItem
-                            onClick={() => bulkUnhideMutation.mutate([...selectedJobIds])}
+                            onClick={() =>
+                              bulkUnhideMutation.mutate([...selectedJobIds])
+                            }
                             disabled={bulkUnhideMutation.isPending}
                           >
                             <Eye className="h-4 w-4 mr-2" />
@@ -1011,17 +1294,23 @@ export default function JobSearchPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent>
-                          <DropdownMenuLabel>Change Applied Status</DropdownMenuLabel>
+                          <DropdownMenuLabel>
+                            Change Applied Status
+                          </DropdownMenuLabel>
                           <DropdownMenuSeparator />
                           <DropdownMenuCheckboxItem
-                            onClick={() => bulkApplyMutation.mutate([...selectedJobIds])}
+                            onClick={() =>
+                              bulkApplyMutation.mutate([...selectedJobIds])
+                            }
                             disabled={bulkApplyMutation.isPending}
                           >
                             <CheckCheck className="h-4 w-4 mr-2" />
                             Mark as Applied
                           </DropdownMenuCheckboxItem>
                           <DropdownMenuCheckboxItem
-                            onClick={() => bulkUnapplyMutation.mutate([...selectedJobIds])}
+                            onClick={() =>
+                              bulkUnapplyMutation.mutate([...selectedJobIds])
+                            }
                             disabled={bulkUnapplyMutation.isPending}
                           >
                             <XCircle className="h-4 w-4 mr-2" />
@@ -1033,7 +1322,9 @@ export default function JobSearchPage() {
                         variant="outline"
                         size="sm"
                         className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => bulkDeleteMutation.mutate([...selectedJobIds])}
+                        onClick={() =>
+                          bulkDeleteMutation.mutate([...selectedJobIds])
+                        }
                         disabled={bulkDeleteMutation.isPending}
                       >
                         {bulkDeleteMutation.isPending ? (
@@ -1059,512 +1350,724 @@ export default function JobSearchPage() {
                       <Search className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                       <p className="font-medium">No saved results</p>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Click &quot;Search&quot; to find entry-level jobs in the DMV area.
+                        Click &quot;Search&quot; to find entry-level jobs in the
+                        DMV area.
                       </p>
                     </CardContent>
                   </Card>
                 ) : (
                   <>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-10">
-                            <input
-                              type="checkbox"
-                              checked={allOnPageSelected}
-                              ref={(el) => {
-                                if (el) el.indeterminate = someOnPageSelected && !allOnPageSelected;
-                              }}
-                              onChange={toggleSelectAllOnPage}
-                              className="h-4 w-4 rounded border-gray-300 cursor-pointer"
-                              title="Select all on page"
-                            />
-                          </TableHead>
-                          <TableHead className="w-8"></TableHead>
-                          <TableHead className="w-16 text-muted-foreground">ID</TableHead>
-                          <SortableHeader field="llm_score">Score</SortableHeader>
-                          <TableHead>Skills</TableHead>
-                          <SortableHeader field="title">Title</SortableHeader>
-                          <SortableHeader field="company">Company</SortableHeader>
-                          <SortableHeader field="location">Location</SortableHeader>
-                          <SortableHeader field="date_posted">Posted</SortableHeader>
-                          <SortableHeader field="site_source">Source</SortableHeader>
-                          <SortableHeader field="salary">Salary</SortableHeader>
-                          <SortableHeader field="last_seen_at">Updated</SortableHeader>
-                          <TableHead className="w-24">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {paginatedJobs.map((job) => (
-                          <Fragment key={job.id || job.job_url}>
-                            <TableRow
-                              className={`${job.is_mismatch ? "bg-red-50 dark:bg-red-950/20" : ""} ${
-                                job.is_hidden ? "opacity-60 bg-gray-50 dark:bg-gray-900/20" : ""
-                              } ${job.llm_notes ? "cursor-pointer hover:bg-muted/50" : ""} ${
-                                job.id && selectedJobIds.has(job.id) ? "bg-violet-50 dark:bg-violet-950/20" : ""
-                              }`}
-                              onClick={() => job.llm_notes && toggleExpanded(job.id)}
-                            >
-                              <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
-                                {job.id && (
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedJobIds.has(job.id)}
-                                    onChange={() => toggleJobSelection(job.id!)}
-                                    className="h-4 w-4 rounded border-gray-300 cursor-pointer"
-                                  />
-                                )}
-                              </TableCell>
-                              <TableCell className="w-8">
-                                {job.llm_notes && (
-                                  <Button variant="ghost" size="icon" className="h-6 w-6">
-                                    {expandedJobId === job.id ? (
-                                      <ChevronUp className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                )}
-                              </TableCell>
-                              <TableCell className="w-16 text-muted-foreground text-xs font-mono">
-                                {job.id || "-"}
-                              </TableCell>
-                              <TableCell>
-                                {/* Queue/Analyzing status takes priority */}
-                                {analyzingJobId === job.id ? (
-                                  <Badge className="bg-violet-500 text-white animate-pulse gap-1">
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                    Analyzing
-                                  </Badge>
-                                ) : queuedJobIds.has(job.id!) ? (
-                                  <Badge className="bg-amber-500 text-white gap-1">
-                                    <Loader2 className="h-3 w-3" />
-                                    Queued
-                                  </Badge>
-                                ) : job.llm_score !== null && job.llm_score !== undefined ? (
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <Badge className={`${getScoreColor(job.llm_score)} gap-1`}>
-                                        {getScoreIcon(job.llm_score)}
-                                        {job.llm_score}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-xs">
-                                      <p className="text-sm">{job.llm_analysis || "No analysis available"}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ) : (
-                                  <Badge variant="outline" className="text-muted-foreground">
-                                    —
-                                  </Badge>
-                                )}
-                              </TableCell>
-                              <TableCell className="max-w-32">
-                                {(job.matched_skills?.length || job.missing_skills?.length) ? (
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <div className="flex items-center gap-1">
-                                        {job.matched_skills && job.matched_skills.length > 0 && (
-                                          <span className="text-xs text-green-600 font-medium">
-                                            +{job.matched_skills.length}
-                                          </span>
-                                        )}
-                                        {job.missing_skills && job.missing_skills.length > 0 && (
-                                          <span className="text-xs text-red-500 font-medium">
-                                            -{job.missing_skills.length}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-sm">
-                                      <div className="space-y-2">
-                                        {job.matched_skills && job.matched_skills.length > 0 && (
-                                          <div>
-                                            <p className="text-xs font-medium text-green-600 mb-1">Matched:</p>
-                                            <div className="flex flex-wrap gap-1">
-                                              {job.matched_skills.map((skill, i) => (
-                                                <Badge key={i} variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">
-                                                  {skill}
-                                                </Badge>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-                                        {job.missing_skills && job.missing_skills.length > 0 && (
-                                          <div>
-                                            <p className="text-xs font-medium text-red-600 mb-1">Missing:</p>
-                                            <div className="flex flex-wrap gap-1">
-                                              {job.missing_skills.map((skill, i) => (
-                                                <Badge key={i} variant="outline" className="text-xs bg-red-50 text-red-700 border-red-300">
-                                                  {skill}
-                                                </Badge>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="font-medium max-w-xs">
-                                <div className="flex items-center gap-2">
-                                  <span className="truncate" title={job.title}>
-                                    {job.title}
-                                  </span>
-                                  {job.is_hidden && (
-                                    <Badge variant="outline" className="text-xs text-gray-500 border-gray-400">
-                                      Hidden
-                                    </Badge>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-10">
+                              <input
+                                type="checkbox"
+                                checked={allOnPageSelected}
+                                ref={(el) => {
+                                  if (el)
+                                    el.indeterminate =
+                                      someOnPageSelected && !allOnPageSelected;
+                                }}
+                                onChange={toggleSelectAllOnPage}
+                                className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                                title="Select all on page"
+                              />
+                            </TableHead>
+                            <TableHead className="w-8"></TableHead>
+                            <TableHead className="w-16 text-muted-foreground">
+                              ID
+                            </TableHead>
+                            <SortableHeader field="llm_score">
+                              Score
+                            </SortableHeader>
+                            <TableHead>Skills</TableHead>
+                            <SortableHeader field="title">Title</SortableHeader>
+                            <SortableHeader field="company">
+                              Company
+                            </SortableHeader>
+                            <SortableHeader field="location">
+                              Location
+                            </SortableHeader>
+                            <SortableHeader field="date_posted">
+                              Posted
+                            </SortableHeader>
+                            <SortableHeader field="site_source">
+                              Source
+                            </SortableHeader>
+                            <SortableHeader field="salary">
+                              Salary
+                            </SortableHeader>
+                            <SortableHeader field="last_seen_at">
+                              Updated
+                            </SortableHeader>
+                            <TableHead className="w-24">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paginatedJobs.map((job) => (
+                            <Fragment key={job.id || job.job_url}>
+                              <TableRow
+                                className={`${job.is_mismatch ? "bg-red-50 dark:bg-red-950/20" : ""} ${
+                                  job.is_hidden
+                                    ? "opacity-60 bg-gray-50 dark:bg-gray-900/20"
+                                    : ""
+                                } ${job.llm_notes ? "cursor-pointer hover:bg-muted/50" : ""} ${
+                                  job.id && selectedJobIds.has(job.id)
+                                    ? "bg-violet-50 dark:bg-violet-950/20"
+                                    : ""
+                                }`}
+                                onClick={() =>
+                                  job.llm_notes && toggleExpanded(job.id)
+                                }
+                              >
+                                <TableCell
+                                  className="w-10"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {job.id && (
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedJobIds.has(job.id)}
+                                      onChange={() =>
+                                        toggleJobSelection(job.id!)
+                                      }
+                                      className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                                    />
                                   )}
-                                  {job.is_applied && (
+                                </TableCell>
+                                <TableCell className="w-8">
+                                  {job.llm_notes && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6"
+                                    >
+                                      {expandedJobId === job.id ? (
+                                        <ChevronUp className="h-4 w-4" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  )}
+                                </TableCell>
+                                <TableCell className="w-16 text-muted-foreground text-xs font-mono">
+                                  {job.id || "-"}
+                                </TableCell>
+                                <TableCell>
+                                  {/* Queue/Analyzing status takes priority */}
+                                  {analyzingJobId === job.id ? (
+                                    <Badge className="bg-violet-500 text-white animate-pulse gap-1">
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      Analyzing
+                                    </Badge>
+                                  ) : queuedJobIds.has(job.id!) ? (
+                                    <Badge className="bg-amber-500 text-white gap-1">
+                                      <Loader2 className="h-3 w-3" />
+                                      Queued
+                                    </Badge>
+                                  ) : job.llm_score !== null &&
+                                    job.llm_score !== undefined ? (
                                     <Tooltip>
                                       <TooltipTrigger>
-                                        <Badge variant="outline" className="text-xs text-green-600 border-green-600">
-                                          Applied
+                                        <Badge
+                                          className={`${getScoreColor(job.llm_score)} gap-1`}
+                                        >
+                                          {getScoreIcon(job.llm_score)}
+                                          {job.llm_score}
                                         </Badge>
                                       </TooltipTrigger>
-                                      <TooltipContent>
-                                        Applied {job.applied_at ? formatDistanceToNow(parseISO(job.applied_at), { addSuffix: true }) : ""}
+                                      <TooltipContent className="max-w-xs">
+                                        <p className="text-sm">
+                                          {job.llm_analysis ||
+                                            "No analysis available"}
+                                        </p>
                                       </TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {job.is_mismatch && (
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                                      </TooltipTrigger>
-                                      <TooltipContent>Flagged as field mismatch</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {job.llm_notes && (
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <FileText className="h-4 w-4 text-violet-500" />
-                                      </TooltipTrigger>
-                                      <TooltipContent>Has detailed analysis notes</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {job.description && (
-                                    <Tooltip>
-                                      <TooltipTrigger>
-                                        <AlignLeft className="h-4 w-4 text-sky-500" />
-                                      </TooltipTrigger>
-                                      <TooltipContent>Job description available</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  {job.applied_company ? (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div className="relative">
-                                          <Building2 className="h-3.5 w-3.5 text-blue-500" />
-                                          <CheckCircle2 className="h-2 w-2 text-blue-500 absolute -bottom-0.5 -right-0.5" />
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent>Previously applied to this company</TooltipContent>
                                     </Tooltip>
                                   ) : (
-                                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                    <Badge
+                                      variant="outline"
+                                      className="text-muted-foreground"
+                                    >
+                                      —
+                                    </Badge>
                                   )}
-                                  <span className="truncate max-w-28 pl-1" title={job.company}>
-                                    {job.company}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                  <MapPin className="h-3.5 w-3.5" />
-                                  <span className="truncate max-w-28" title={job.location || ""}>
-                                    {job.location || "-"}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {job.date_posted || "-"}
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="secondary"
-                                  className={`text-xs ${SITE_COLORS[job.site_source] || "bg-gray-500 text-white"}`}
-                                >
-                                  {formatSiteName(job.site_source)}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {formatSalary(job.salary_min, job.salary_max) ? (
-                                  <span className="text-green-600 dark:text-green-400">
-                                    {formatSalary(job.salary_min, job.salary_max)}
-                                  </span>
-                                ) : (
-                                  "-"
-                                )}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
-                                {job.last_seen_at
-                                  ? formatDistanceToNow(parseISO(job.last_seen_at), { addSuffix: true })
-                                  : "-"}
-                              </TableCell>
-                              <TableCell onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center gap-1">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <a href={job.job_url} target="_blank" rel="noopener noreferrer">
-                                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                                          <ExternalLink className="h-4 w-4" />
-                                        </Button>
-                                      </a>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Open job posting</TooltipContent>
-                                  </Tooltip>
-                                  {job.id && (
+                                </TableCell>
+                                <TableCell className="max-w-32">
+                                  {job.matched_skills?.length ||
+                                  job.missing_skills?.length ? (
                                     <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className={`h-8 w-8 ${job.is_applied ? "text-green-600" : "text-muted-foreground"}`}
-                                          onClick={() =>
-                                            toggleAppliedMutation.mutate({
-                                              id: job.id!,
-                                              isApplied: job.is_applied || false,
-                                            })
-                                          }
-                                        >
-                                          {job.is_applied ? (
-                                            <CheckCheck className="h-4 w-4" />
-                                          ) : (
-                                            <Send className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        {job.is_applied ? "Unmark as applied" : "Mark as applied"}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {job.llm_notes && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8"
-                                          onClick={() => setNotesDialogJob(job)}
-                                        >
-                                          <FileText className="h-4 w-4 text-violet-500" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>View analysis notes</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {/* Analyze button - disabled for jobs without valid descriptions */}
-                                  {job.id && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className={`h-8 w-8 ${
-                                            !hasValidDescription(job)
-                                              ? "text-muted-foreground/30 cursor-not-allowed"
-                                              : isJobInQueue(job.id)
-                                              ? "text-muted-foreground/50 cursor-not-allowed"
-                                              : job.llm_score !== null
-                                              ? "text-muted-foreground hover:text-violet-600"
-                                              : "text-violet-500 hover:text-violet-600"
-                                          }`}
-                                          onClick={() => handleAnalyzeSingle(job.id!)}
-                                          disabled={!hasValidDescription(job) || isJobInQueue(job.id) || isAnalyzing}
-                                        >
-                                          {job.llm_score !== null ? (
-                                            <RotateCcw className="h-4 w-4" />
-                                          ) : (
-                                            <Brain className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        {!hasValidDescription(job)
-                                          ? "Cannot analyze - job has no description"
-                                          : isJobInQueue(job.id)
-                                          ? "Job is in analysis queue"
-                                          : job.llm_score !== null
-                                          ? "Re-analyze with AI"
-                                          : "Analyze with AI"}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {/* Hide/Unhide button */}
-                                  {job.id && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8"
-                                          onClick={() =>
-                                            job.is_hidden
-                                              ? unhideMutation.mutate(job.id!)
-                                              : hideMutation.mutate(job.id!)
-                                          }
-                                        >
-                                          {job.is_hidden ? (
-                                            <Eye className="h-4 w-4 text-amber-500" />
-                                          ) : (
-                                            <EyeOff className="h-4 w-4 text-muted-foreground" />
-                                          )}
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        {job.is_hidden ? "Unhide job" : "Hide job"}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                            {/* Expanded Notes Row */}
-                            {expandedJobId === job.id && job.llm_notes && (
-                              <TableRow className="bg-violet-50 dark:bg-violet-950/20">
-                                <TableCell colSpan={14} className="py-4">
-                                  <div className="px-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="flex items-start gap-3 flex-1">
-                                      <Brain className="h-5 w-5 text-violet-500 mt-0.5 flex-shrink-0" />
-                                      <div className="space-y-2">
-                                        <p className="font-medium text-sm text-violet-700 dark:text-violet-300">
-                                          AI Analysis Notes
-                                        </p>
-                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                          {job.llm_notes}
-                                        </p>
+                                      <TooltipTrigger>
+                                        <div className="flex items-center gap-1">
+                                          {job.matched_skills &&
+                                            job.matched_skills.length > 0 && (
+                                              <span className="text-xs text-green-600 font-medium">
+                                                +{job.matched_skills.length}
+                                              </span>
+                                            )}
+                                          {job.missing_skills &&
+                                            job.missing_skills.length > 0 && (
+                                              <span className="text-xs text-red-500 font-medium">
+                                                -{job.missing_skills.length}
+                                              </span>
+                                            )}
                                         </div>
-                                      </div>
-                                      <div className="flex-shrink-0">
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="gap-2 text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                banCompanyMutation.mutate(job.company);
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-sm">
+                                        <div className="space-y-2">
+                                          {job.matched_skills &&
+                                            job.matched_skills.length > 0 && (
+                                              <div>
+                                                <p className="text-xs font-medium text-green-600 mb-1">
+                                                  Matched:
+                                                </p>
+                                                <div className="flex flex-wrap gap-1">
+                                                  {job.matched_skills.map(
+                                                    (skill, i) => (
+                                                      <Badge
+                                                        key={i}
+                                                        variant="outline"
+                                                        className="text-xs bg-green-50 text-green-700 border-green-300"
+                                                      >
+                                                        {skill}
+                                                      </Badge>
+                                                    ),
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          {job.missing_skills &&
+                                            job.missing_skills.length > 0 && (
+                                              <div>
+                                                <p className="text-xs font-medium text-red-600 mb-1">
+                                                  Missing:
+                                                </p>
+                                                <div className="flex flex-wrap gap-1">
+                                                  {job.missing_skills.map(
+                                                    (skill, i) => (
+                                                      <Badge
+                                                        key={i}
+                                                        variant="outline"
+                                                        className="text-xs bg-red-50 text-red-700 border-red-300"
+                                                      >
+                                                        {skill}
+                                                      </Badge>
+                                                    ),
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  ) : (
+                                    <span className="text-muted-foreground">
+                                      —
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="font-medium max-w-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className="truncate"
+                                      title={job.title}
+                                    >
+                                      {job.title}
+                                    </span>
+                                    {job.is_hidden && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs text-gray-500 border-gray-400"
+                                      >
+                                        Hidden
+                                      </Badge>
+                                    )}
+                                    {job.is_applied && (
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <Badge
+                                            variant="outline"
+                                            className="text-xs text-green-600 border-green-600"
+                                          >
+                                            Applied
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          Applied{" "}
+                                          {job.applied_at
+                                            ? formatDistanceToNow(
+                                                parseISO(job.applied_at),
+                                                { addSuffix: true },
+                                              )
+                                            : ""}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {job.is_mismatch && (
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <AlertTriangle className="h-4 w-4 text-red-500" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          Flagged as field mismatch
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {job.llm_notes && (
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <FileText className="h-4 w-4 text-violet-500" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          Has detailed analysis notes
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {job.description && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 p-0 hover:bg-transparent"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setDescriptionDialogJob(job);
+                                            }}
+                                          >
+                                            <AlignLeft className="h-4 w-4 text-sky-500 hover:text-sky-600 cursor-pointer" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          View job description
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button className="flex items-center gap-1 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400 hover:underline decoration-dashed underline-offset-4 text-left max-w-[140px] truncate focus:outline-none transition-colors">
+                                        {getCleanLogoUrl(job.company_logo) ? (
+                                          <div className="relative flex-shrink-0 flex items-center justify-center w-4 h-4 mr-1">
+                                            <Image
+                                              src={getCleanLogoUrl(job.company_logo)!}
+                                              alt=""
+                                              width={16}
+                                              height={16}
+                                              className="object-contain max-h-full max-w-full rounded-sm"
+                                              onError={(e) => {
+                                                (
+                                                  e.target as HTMLImageElement
+                                                ).style.display = "none";
+                                                const sibling = (
+                                                  e.target as HTMLImageElement
+                                                )
+                                                  .nextElementSibling as HTMLElement;
+                                                if (sibling)
+                                                  sibling.classList.remove(
+                                                    "hidden",
+                                                  );
                                               }}
-                                              disabled={banCompanyMutation.isPending}
-                                            >
-                                              {banCompanyMutation.isPending ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                              ) : (
-                                                <Ban className="h-4 w-4" />
-                                              )}
-                                              Ban Company
-                                            </Button>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            Ban "{job.company}" - hides all their jobs and excludes from future searches
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </div>
-                                    </div>
+                                            />
+                                            <Building2 className="h-3.5 w-3.5 text-muted-foreground hidden" />
+                                            {job.applied_company && (
+                                              <CheckCircle2 className="h-2 w-2 text-blue-500 absolute -bottom-0.5 -right-0.5" />
+                                            )}
+                                          </div>
+                                        ) : job.applied_company ? (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <div className="relative flex-shrink-0 mr-1">
+                                                <Building2 className="h-3.5 w-3.5 text-blue-500" />
+                                                <CheckCircle2 className="h-2 w-2 text-blue-500 absolute -bottom-0.5 -right-0.5" />
+                                              </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              Previously applied to this company
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        ) : (
+                                          <Building2 className="h-3.5 w-3.5 mr-1 text-muted-foreground flex-shrink-0" />
+                                        )}
+                                        <span
+                                          className="truncate font-medium"
+                                          title={job.company}
+                                        >
+                                          {job.company}
+                                        </span>
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start">
+                                      <DropdownMenuLabel className="truncate max-w-[200px]">
+                                        {job.company}
+                                      </DropdownMenuLabel>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="text-red-600 focus:text-red-600 cursor-pointer"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          banCompanyMutation.mutate(
+                                            job.company,
+                                          );
+                                        }}
+                                        disabled={banCompanyMutation.isPending}
+                                      >
+                                        <Ban className="h-4 w-4 mr-2" />
+                                        Ban Company
+                                      </DropdownMenuItem>
+                                      {/* Placeholder for highlight or other actions in the future */}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  <div className="flex items-center gap-1">
+                                    <MapPin className="h-3.5 w-3.5" />
+                                    <span
+                                      className="truncate max-w-28"
+                                      title={job.location || ""}
+                                    >
+                                      {job.location || "-"}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {job.date_posted || "-"}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant="secondary"
+                                    className={`text-xs ${SITE_COLORS[job.site_source] || "bg-gray-500 text-white"}`}
+                                  >
+                                    {formatSiteName(job.site_source)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {formatSalary(
+                                    job.salary_min,
+                                    job.salary_max,
+                                  ) ? (
+                                    <span className="text-green-600 dark:text-green-400">
+                                      {formatSalary(
+                                        job.salary_min,
+                                        job.salary_max,
+                                      )}
+                                    </span>
+                                  ) : (
+                                    "-"
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
+                                  {job.last_seen_at
+                                    ? formatDistanceToNow(
+                                        parseISO(job.last_seen_at),
+                                        { addSuffix: true },
+                                      )
+                                    : "-"}
+                                </TableCell>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-1">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <a
+                                          href={job.job_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                          >
+                                            <ExternalLink className="h-4 w-4" />
+                                          </Button>
+                                        </a>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Open job posting
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    {job.id && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 ${job.is_applied ? "text-green-600" : "text-muted-foreground"}`}
+                                            onClick={() =>
+                                              toggleAppliedMutation.mutate({
+                                                id: job.id!,
+                                                isApplied:
+                                                  job.is_applied || false,
+                                              })
+                                            }
+                                          >
+                                            {job.is_applied ? (
+                                              <CheckCheck className="h-4 w-4" />
+                                            ) : (
+                                              <Send className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {job.is_applied
+                                            ? "Unmark as applied"
+                                            : "Mark as applied"}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {job.llm_notes && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() =>
+                                              setNotesDialogJob(job)
+                                            }
+                                          >
+                                            <FileText className="h-4 w-4 text-violet-500" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          View analysis notes
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {/* Analyze button - disabled for jobs without valid descriptions */}
+                                    {job.id && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 ${
+                                              !hasValidDescription(job)
+                                                ? "text-muted-foreground/30 cursor-not-allowed"
+                                                : isJobInQueue(job.id)
+                                                  ? "text-muted-foreground/50 cursor-not-allowed"
+                                                  : job.llm_score !== null
+                                                    ? "text-muted-foreground hover:text-violet-600"
+                                                    : "text-violet-500 hover:text-violet-600"
+                                            }`}
+                                            onClick={() =>
+                                              handleAnalyzeSingle(job.id!)
+                                            }
+                                            disabled={
+                                              !hasValidDescription(job) ||
+                                              isJobInQueue(job.id) ||
+                                              isAnalyzing
+                                            }
+                                          >
+                                            {job.llm_score !== null ? (
+                                              <RotateCcw className="h-4 w-4" />
+                                            ) : (
+                                              <Brain className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {!hasValidDescription(job)
+                                            ? "Cannot analyze - job has no description"
+                                            : isJobInQueue(job.id)
+                                              ? "Job is in analysis queue"
+                                              : job.llm_score !== null
+                                                ? "Re-analyze with AI"
+                                                : "Analyze with AI"}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {/* Hide/Unhide button */}
+                                    {job.id && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() =>
+                                              job.is_hidden
+                                                ? unhideMutation.mutate(job.id!)
+                                                : hideMutation.mutate(job.id!)
+                                            }
+                                          >
+                                            {job.is_hidden ? (
+                                              <Eye className="h-4 w-4 text-amber-500" />
+                                            ) : (
+                                              <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                            )}
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {job.is_hidden
+                                            ? "Unhide job"
+                                            : "Hide job"}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>
-                            )}
-                          </Fragment>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  {/* Pagination Controls */}
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-between pt-4">
-                      <p className="text-sm text-muted-foreground">
-                        Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to{" "}
-                        {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedJobs.length)} of{" "}
-                        {filteredAndSortedJobs.length} results
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentPage(1)}
-                          disabled={currentPage === 1}
-                        >
-                          First
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentPage(currentPage - 1)}
-                          disabled={currentPage === 1}
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <div className="flex items-center gap-1">
-                          {/* Page numbers */}
-                          {Array.from({ length: totalPages }, (_, i) => i + 1)
-                            .filter(page => {
-                              // Show first, last, current, and neighbors
-                              return (
-                                page === 1 ||
-                                page === totalPages ||
-                                Math.abs(page - currentPage) <= 1
-                              );
-                            })
-                            .reduce((acc: (number | string)[], page, idx, arr) => {
-                              // Add ellipsis where needed
-                              if (idx > 0 && page - (arr[idx - 1] as number) > 1) {
-                                acc.push("...");
-                              }
-                              acc.push(page);
-                              return acc;
-                            }, [])
-                            .map((item, idx) =>
-                              typeof item === "string" ? (
-                                <span key={`ellipsis-${idx}`} className="px-2 text-muted-foreground">
-                                  {item}
-                                </span>
-                              ) : (
-                                <Button
-                                  key={item}
-                                  variant={currentPage === item ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => setCurrentPage(item)}
-                                  className="min-w-[36px]"
-                                >
-                                  {item}
-                                </Button>
-                              )
-                            )}
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentPage(currentPage + 1)}
-                          disabled={currentPage === totalPages}
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentPage(totalPages)}
-                          disabled={currentPage === totalPages}
-                        >
-                          Last
-                        </Button>
-                      </div>
+                              {/* Expanded Notes Row */}
+                              {expandedJobId === job.id && job.llm_notes && (
+                                <TableRow className="bg-violet-50 dark:bg-violet-950/20">
+                                  <TableCell colSpan={14} className="py-4">
+                                    <div className="px-4">
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-start gap-3 flex-1">
+                                          <Brain className="h-5 w-5 text-violet-500 mt-0.5 flex-shrink-0" />
+                                          <div className="space-y-2">
+                                            <p className="font-medium text-sm text-violet-700 dark:text-violet-300">
+                                              AI Analysis Notes
+                                            </p>
+                                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                              {job.llm_notes}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="flex-shrink-0">
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-2 text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  banCompanyMutation.mutate(
+                                                    job.company,
+                                                  );
+                                                }}
+                                                disabled={
+                                                  banCompanyMutation.isPending
+                                                }
+                                              >
+                                                {banCompanyMutation.isPending ? (
+                                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                  <Ban className="h-4 w-4" />
+                                                )}
+                                                Ban Company
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              Ban "{job.company}" - hides all
+                                              their jobs and excludes from
+                                              future searches
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </Fragment>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
-                  )}
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between pt-4">
+                        <p className="text-sm text-muted-foreground">
+                          Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{" "}
+                          {Math.min(
+                            currentPage * ITEMS_PER_PAGE,
+                            filteredAndSortedJobs.length,
+                          )}{" "}
+                          of {filteredAndSortedJobs.length} results
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(1)}
+                            disabled={currentPage === 1}
+                          >
+                            First
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(currentPage - 1)}
+                            disabled={currentPage === 1}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <div className="flex items-center gap-1">
+                            {/* Page numbers */}
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                              .filter((page) => {
+                                // Show first, last, current, and neighbors
+                                return (
+                                  page === 1 ||
+                                  page === totalPages ||
+                                  Math.abs(page - currentPage) <= 1
+                                );
+                              })
+                              .reduce(
+                                (acc: (number | string)[], page, idx, arr) => {
+                                  // Add ellipsis where needed
+                                  if (
+                                    idx > 0 &&
+                                    page - (arr[idx - 1] as number) > 1
+                                  ) {
+                                    acc.push("...");
+                                  }
+                                  acc.push(page);
+                                  return acc;
+                                },
+                                [],
+                              )
+                              .map((item, idx) =>
+                                typeof item === "string" ? (
+                                  <span
+                                    key={`ellipsis-${idx}`}
+                                    className="px-2 text-muted-foreground"
+                                  >
+                                    {item}
+                                  </span>
+                                ) : (
+                                  <Button
+                                    key={item}
+                                    variant={
+                                      currentPage === item
+                                        ? "default"
+                                        : "outline"
+                                    }
+                                    size="sm"
+                                    onClick={() => setCurrentPage(item)}
+                                    className="min-w-[36px]"
+                                  >
+                                    {item}
+                                  </Button>
+                                ),
+                              )}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(totalPages)}
+                            disabled={currentPage === totalPages}
+                          >
+                            Last
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -1572,19 +2075,92 @@ export default function JobSearchPage() {
           </div>
         </div>
 
+        {/* Description Dialog */}
+        <Dialog
+          open={descriptionDialogJob !== null}
+          onOpenChange={() => setDescriptionDialogJob(null)}
+        >
+          <DialogContent className="w-[95vw] sm:max-w-4xl md:max-w-5xl lg:max-w-6xl max-h-[85vh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
+              <DialogTitle className="flex items-center gap-2">
+                <AlignLeft className="h-5 w-5 text-sky-500" />
+                Job Description: {descriptionDialogJob?.title}
+              </DialogTitle>
+              <DialogDescription>
+                {descriptionDialogJob?.company} •{" "}
+                {descriptionDialogJob?.location || "Unknown Location"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto py-4">
+              <div className="p-6 rounded-lg bg-muted/30 border border-border/50">
+                {descriptionDialogJob?.description ? (
+                  <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-muted/50 prose-a:text-sky-500 hover:prose-a:text-sky-600">
+                    {/* Render as Markdown with remarkBreaks and formatting heuristics */}
+                    <ReactMarkdown remarkPlugins={[remarkBreaks]}>
+                      {formatJobDescription(descriptionDialogJob.description)}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    No description available.
+                  </p>
+                )}
+              </div>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2 flex-shrink-0 sm:justify-between">
+              <div className="flex items-center">
+                {descriptionDialogJob?.company && (
+                  <AnimatedBanButton
+                    company={descriptionDialogJob.company}
+                    onBan={(company) => {
+                      banCompanyMutation.mutate(company);
+                      setDescriptionDialogJob(null);
+                    }}
+                    isPending={banCompanyMutation.isPending}
+                  />
+                )}
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button
+                  variant="outline"
+                  className="flex-1 sm:flex-none"
+                  onClick={() => setDescriptionDialogJob(null)}
+                >
+                  Close
+                </Button>
+                <a
+                  href={descriptionDialogJob?.job_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 sm:flex-none"
+                >
+                  <Button className="w-full">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    View Job
+                  </Button>
+                </a>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Notes Dialog */}
-        <Dialog open={notesDialogJob !== null} onOpenChange={() => setNotesDialogJob(null)}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
-            <DialogHeader>
+        <Dialog
+          open={notesDialogJob !== null}
+          onOpenChange={() => setNotesDialogJob(null)}
+        >
+          <DialogContent className="w-[95vw] sm:max-w-3xl md:max-w-4xl lg:max-w-5xl max-h-[85vh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5 text-violet-500" />
                 AI Analysis: {notesDialogJob?.title}
               </DialogTitle>
               <DialogDescription>
-                {notesDialogJob?.company} • Score: {notesDialogJob?.llm_score}/100
+                {notesDialogJob?.company} • Score: {notesDialogJob?.llm_score}
+                /100
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="space-y-4 flex-1 overflow-auto pr-2">
               {notesDialogJob?.llm_analysis && (
                 <div className="p-4 rounded-lg bg-muted/50">
                   <p className="font-medium text-sm mb-2">Summary</p>
@@ -1602,13 +2178,15 @@ export default function JobSearchPage() {
               {notesDialogJob?.description && (
                 <div className="p-4 rounded-lg border border-dashed">
                   <p className="font-medium text-sm mb-2">Job Description</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap max-h-48 overflow-auto">
-                    {notesDialogJob.description}
-                  </p>
+                  <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed max-h-48 overflow-auto">
+                    <ReactMarkdown remarkPlugins={[remarkBreaks]}>
+                      {formatJobDescription(notesDialogJob.description)}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               )}
             </div>
-            <DialogFooter className="flex-col sm:flex-row gap-2">
+            <DialogFooter className="flex-col sm:flex-row gap-2 flex-shrink-0">
               <Button
                 variant="ghost"
                 size="sm"
@@ -1635,10 +2213,17 @@ ${notesDialogJob?.description || "N/A"}`;
                 Copy Debug
               </Button>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setNotesDialogJob(null)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setNotesDialogJob(null)}
+                >
                   Close
                 </Button>
-                <a href={notesDialogJob?.job_url} target="_blank" rel="noopener noreferrer">
+                <a
+                  href={notesDialogJob?.job_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <Button>
                     <ExternalLink className="h-4 w-4 mr-2" />
                     View Job
@@ -1650,10 +2235,13 @@ ${notesDialogJob?.description || "N/A"}`;
         </Dialog>
 
         {/* Nuclear Clear Confirmation Dialog */}
-        <Dialog open={clearDialogOpen} onOpenChange={(open) => {
-          setClearDialogOpen(open);
-          if (!open) setClearConfirmText("");
-        }}>
+        <Dialog
+          open={clearDialogOpen}
+          onOpenChange={(open) => {
+            setClearDialogOpen(open);
+            if (!open) setClearConfirmText("");
+          }}
+        >
           <DialogContent className="border-red-500/50">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-red-600">
@@ -1661,7 +2249,8 @@ ${notesDialogJob?.description || "N/A"}`;
                 Clear All Job Listings
               </DialogTitle>
               <DialogDescription className="text-red-600/80">
-                This action is irreversible. All {jobs.length} job listings will be permanently deleted from the database.
+                This action is irreversible. All {jobs.length} job listings will
+                be permanently deleted from the database.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -1674,10 +2263,14 @@ ${notesDialogJob?.description || "N/A"}`;
                   <li>All LLM analysis scores and notes</li>
                   <li>All applied/hidden status flags</li>
                 </ul>
-                  </div>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">
-                  Type <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-red-600">DELETE</span> to confirm:
+                  Type{" "}
+                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-red-600">
+                    DELETE
+                  </span>{" "}
+                  to confirm:
                 </label>
                 <Input
                   value={clearConfirmText}
@@ -1688,19 +2281,22 @@ ${notesDialogJob?.description || "N/A"}`;
               </div>
             </div>
             <DialogFooter>
-                    <Button
-                      variant="outline"
+              <Button
+                variant="outline"
                 onClick={() => {
                   setClearDialogOpen(false);
                   setClearConfirmText("");
                 }}
               >
                 Cancel
-                    </Button>
-                    <Button
+              </Button>
+              <Button
                 variant="destructive"
                 onClick={() => clearResultsMutation.mutate()}
-                disabled={clearConfirmText !== "DELETE" || clearResultsMutation.isPending}
+                disabled={
+                  clearConfirmText !== "DELETE" ||
+                  clearResultsMutation.isPending
+                }
                 className="bg-red-600 hover:bg-red-700"
               >
                 {clearResultsMutation.isPending ? (
@@ -1715,10 +2311,13 @@ ${notesDialogJob?.description || "N/A"}`;
         </Dialog>
 
         {/* Clear Analysis Confirmation Dialog */}
-        <Dialog open={clearAnalysisDialogOpen} onOpenChange={(open) => {
-          setClearAnalysisDialogOpen(open);
-          if (!open) setClearAnalysisConfirmText("");
-        }}>
+        <Dialog
+          open={clearAnalysisDialogOpen}
+          onOpenChange={(open) => {
+            setClearAnalysisDialogOpen(open);
+            if (!open) setClearAnalysisConfirmText("");
+          }}
+        >
           <DialogContent className="border-orange-500/50">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-orange-600">
@@ -1726,7 +2325,8 @@ ${notesDialogJob?.description || "N/A"}`;
                 Clear All Analysis
               </DialogTitle>
               <DialogDescription className="text-orange-600/80">
-                This will remove LLM analysis from all {analyzedCount} analyzed jobs. The job listings will remain.
+                This will remove LLM analysis from all {analyzedCount} analyzed
+                jobs. The job listings will remain.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -1740,12 +2340,17 @@ ${notesDialogJob?.description || "N/A"}`;
                   <li>Mismatch flags</li>
                 </ul>
                 <p className="text-sm text-orange-600 dark:text-orange-400 mt-3">
-                  Job listings, applied status, and hidden status will be preserved.
+                  Job listings, applied status, and hidden status will be
+                  preserved.
                 </p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">
-                  Type <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-orange-600">CLEAR</span> to confirm:
+                  Type{" "}
+                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-orange-600">
+                    CLEAR
+                  </span>{" "}
+                  to confirm:
                 </label>
                 <Input
                   value={clearAnalysisConfirmText}
@@ -1767,7 +2372,10 @@ ${notesDialogJob?.description || "N/A"}`;
               </Button>
               <Button
                 onClick={() => clearAnalysisMutation.mutate(undefined)}
-                disabled={clearAnalysisConfirmText !== "CLEAR" || clearAnalysisMutation.isPending}
+                disabled={
+                  clearAnalysisConfirmText !== "CLEAR" ||
+                  clearAnalysisMutation.isPending
+                }
                 className="bg-orange-600 hover:bg-orange-700 text-white"
               >
                 {clearAnalysisMutation.isPending ? (
@@ -1780,7 +2388,6 @@ ${notesDialogJob?.description || "N/A"}`;
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
       </div>
     </TooltipProvider>
   );

@@ -11,30 +11,32 @@ from jam.db.connection import get_cursor
 @dataclass
 class SavedJobResult:
     """A saved job search result from the database"""
+
     id: int
     title: str
     company: str
-    location: Optional[str]
-    date_posted: Optional[str]
+    company_logo: str | None
+    location: str | None
+    date_posted: str | None
     job_url: str
     site_source: str
-    description: Optional[str]
-    salary_min: Optional[float]
-    salary_max: Optional[float]
-    job_type: Optional[str]
-    search_keywords: Optional[str]
+    description: str | None
+    salary_min: float | None
+    salary_max: float | None
+    job_type: str | None
+    search_keywords: str | None
     first_seen_at: str
     last_seen_at: str
-    llm_score: Optional[int]
-    llm_analysis: Optional[str]
-    llm_notes: Optional[str]
-    llm_analyzed_at: Optional[str]
+    llm_score: int | None
+    llm_analysis: str | None
+    llm_notes: str | None
+    llm_analyzed_at: str | None
     is_mismatch: bool
     is_hidden: bool
     is_applied: bool
-    applied_at: Optional[str]
-    matched_skills: Optional[list[str]] = None
-    missing_skills: Optional[list[str]] = None
+    applied_at: str | None
+    matched_skills: list[str] | None = None
+    missing_skills: list[str] | None = None
     search_offset: int = 0
 
     def to_dict(self) -> dict:
@@ -42,6 +44,7 @@ class SavedJobResult:
             "id": self.id,
             "title": self.title,
             "company": self.company,
+            "company_logo": self.company_logo,
             "location": self.location,
             "date_posted": self.date_posted,
             "job_url": self.job_url,
@@ -99,51 +102,96 @@ class JobSearchResultsService:
                 existing = cursor.fetchone()
 
                 if existing:
-                    # Check existing description to see if we should update it
-                    cursor.execute("SELECT description FROM job_search_results WHERE job_url = ?", (job_url,))
+                    # Check existing data to see if we should update it
+                    cursor.execute(
+                        "SELECT description, company_logo FROM job_search_results WHERE job_url = ?",
+                        (job_url,),
+                    )
                     existing_row = cursor.fetchone()
                     existing_desc = existing_row["description"] if existing_row else None
+                    existing_logo = (
+                        existing_row["company_logo"]
+                        if existing_row and "company_logo" in existing_row.keys()
+                        else None
+                    )
 
-                    # Update description if new data has one and existing doesn't
+                    # Update description/logo if new data has one and existing doesn't
                     new_desc = job.get("description")
-                    if new_desc and len(str(new_desc)) > 50 and (not existing_desc or len(str(existing_desc)) < 50):
-                        cursor.execute("""
+                    new_logo = job.get("company_logo")
+
+                    update_desc = (
+                        new_desc
+                        and len(str(new_desc)) > 50
+                        and (not existing_desc or len(str(existing_desc)) < 50)
+                    )
+                    update_logo = new_logo and not existing_logo
+
+                    if update_desc and update_logo:
+                        cursor.execute(
+                            """
+                            UPDATE job_search_results
+                            SET last_seen_at = ?, search_keywords = ?, description = ?, company_logo = ?
+                            WHERE job_url = ?
+                        """,
+                            (now, keywords_str, new_desc, new_logo, job_url),
+                        )
+                    elif update_desc:
+                        cursor.execute(
+                            """
                             UPDATE job_search_results
                             SET last_seen_at = ?, search_keywords = ?, description = ?
                             WHERE job_url = ?
-                        """, (now, keywords_str, new_desc, job_url))
+                        """,
+                            (now, keywords_str, new_desc, job_url),
+                        )
+                    elif update_logo:
+                        cursor.execute(
+                            """
+                            UPDATE job_search_results
+                            SET last_seen_at = ?, search_keywords = ?, company_logo = ?
+                            WHERE job_url = ?
+                        """,
+                            (now, keywords_str, new_logo, job_url),
+                        )
                     else:
-                        cursor.execute("""
+                        cursor.execute(
+                            """
                             UPDATE job_search_results
                             SET last_seen_at = ?, search_keywords = ?
                             WHERE job_url = ?
-                        """, (now, keywords_str, job_url))
+                        """,
+                            (now, keywords_str, job_url),
+                        )
                     updated_count += 1
                 else:
                     # Insert new job
                     try:
-                        cursor.execute("""
+                        cursor.execute(
+                            """
                             INSERT INTO job_search_results
-                            (title, company, location, date_posted, job_url, site_source,
+                            (title, company, company_logo, location, date_posted, job_url, site_source,
                              description, salary_min, salary_max, job_type, search_keywords,
                              first_seen_at, last_seen_at, search_offset)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            job.get("title", "Unknown"),
-                            job.get("company", "Unknown"),
-                            job.get("location"),
-                            job.get("date_posted"),
-                            job_url,
-                            job.get("site_source", "unknown"),
-                            job.get("description"),
-                            job.get("salary_min"),
-                            job.get("salary_max"),
-                            job.get("job_type"),
-                            keywords_str,
-                            now,
-                            now,
-                            job.get("search_offset", 0),
-                        ))
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                            (
+                                job.get("title", "Unknown"),
+                                job.get("company", "Unknown"),
+                                job.get("company_logo"),
+                                job.get("location"),
+                                job.get("date_posted"),
+                                job_url,
+                                job.get("site_source", "unknown"),
+                                job.get("description"),
+                                job.get("salary_min"),
+                                job.get("salary_max"),
+                                job.get("job_type"),
+                                keywords_str,
+                                now,
+                                now,
+                                job.get("search_offset", 0),
+                            ),
+                        )
                         new_count += 1
                     except Exception as e:
                         print(f"Error saving job: {e}")
@@ -151,23 +199,31 @@ class JobSearchResultsService:
 
         return new_count, updated_count
 
-    def get_recent_results(self, hours: int = 24, include_hidden: bool = False) -> list[SavedJobResult]:
+    def get_recent_results(
+        self, hours: int = 24, include_hidden: bool = False
+    ) -> list[SavedJobResult]:
         """Get job search results from the last N hours"""
         cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
 
         with get_cursor() as (conn, cursor):
             if include_hidden:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT * FROM job_search_results
                     WHERE last_seen_at >= ?
                     ORDER BY llm_score DESC NULLS LAST, last_seen_at DESC
-                """, (cutoff,))
+                """,
+                    (cutoff,),
+                )
             else:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT * FROM job_search_results
                     WHERE last_seen_at >= ? AND is_hidden = 0
                     ORDER BY llm_score DESC NULLS LAST, last_seen_at DESC
-                """, (cutoff,))
+                """,
+                    (cutoff,),
+                )
 
             rows = cursor.fetchall()
             return [self._row_to_result(row) for row in rows]
@@ -193,7 +249,8 @@ class JobSearchResultsService:
     def get_unanalyzed_jobs(self, limit: int = 50) -> list[SavedJobResult]:
         """Get jobs that haven't been analyzed by LLM yet (excludes jobs without valid descriptions)"""
         with get_cursor() as (conn, cursor):
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT * FROM job_search_results
                 WHERE llm_score IS NULL AND is_hidden = 0
                   AND description IS NOT NULL
@@ -201,7 +258,9 @@ class JobSearchResultsService:
                   AND LOWER(TRIM(description)) NOT IN ('no description available', 'no description', 'n/a', 'none')
                 ORDER BY last_seen_at DESC
                 LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
 
             rows = cursor.fetchall()
             return [self._row_to_result(row) for row in rows]
@@ -226,8 +285,8 @@ class JobSearchResultsService:
         analysis: str,
         notes: str = "",
         is_mismatch: bool = False,
-        matched_skills: Optional[list[str]] = None,
-        missing_skills: Optional[list[str]] = None,
+        matched_skills: list[str] | None = None,
+        missing_skills: list[str] | None = None,
     ) -> bool:
         """Update a job with LLM analysis results"""
         now = datetime.now().isoformat()
@@ -237,13 +296,24 @@ class JobSearchResultsService:
         missing_json = json.dumps(missing_skills) if missing_skills else None
 
         with get_cursor() as (conn, cursor):
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE job_search_results
                 SET llm_score = ?, llm_analysis = ?, llm_notes = ?, llm_analyzed_at = ?,
                     is_mismatch = ?, matched_skills = ?, missing_skills = ?
                 WHERE id = ?
-            """, (score, analysis, notes, now, 1 if is_mismatch else 0,
-                  matched_json, missing_json, job_id))
+            """,
+                (
+                    score,
+                    analysis,
+                    notes,
+                    now,
+                    1 if is_mismatch else 0,
+                    matched_json,
+                    missing_json,
+                    job_id,
+                ),
+            )
 
             return cursor.rowcount > 0
 
@@ -253,13 +323,16 @@ class JobSearchResultsService:
         Clears llm_score, llm_analysis, llm_notes, llm_analyzed_at, is_mismatch, and skills.
         """
         with get_cursor() as (conn, cursor):
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE job_search_results
                 SET llm_score = NULL, llm_analysis = NULL, llm_notes = NULL,
                     llm_analyzed_at = NULL, is_mismatch = 0,
                     matched_skills = NULL, missing_skills = NULL
                 WHERE id = ?
-            """, (job_id,))
+            """,
+                (job_id,),
+            )
             return cursor.rowcount > 0
 
     def clear_analysis_all(self) -> int:
@@ -296,46 +369,61 @@ class JobSearchResultsService:
 
         with get_cursor() as (conn, cursor):
             placeholders = ",".join("?" * len(job_ids))
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 UPDATE job_search_results
                 SET llm_score = NULL, llm_analysis = NULL, llm_notes = NULL,
                     llm_analyzed_at = NULL, is_mismatch = 0,
                     matched_skills = NULL, missing_skills = NULL
                 WHERE id IN ({placeholders})
-            """, job_ids)
+            """,
+                job_ids,
+            )
             return cursor.rowcount
 
     def hide_job(self, job_id: int) -> bool:
         """Hide a job from results"""
         with get_cursor() as (conn, cursor):
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE job_search_results SET is_hidden = 1 WHERE id = ?
-            """, (job_id,))
+            """,
+                (job_id,),
+            )
             return cursor.rowcount > 0
 
     def unhide_job(self, job_id: int) -> bool:
         """Unhide a job"""
         with get_cursor() as (conn, cursor):
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE job_search_results SET is_hidden = 0 WHERE id = ?
-            """, (job_id,))
+            """,
+                (job_id,),
+            )
             return cursor.rowcount > 0
 
     def mark_applied(self, job_id: int) -> bool:
         """Mark a job as applied"""
         now = datetime.now().isoformat()
         with get_cursor() as (conn, cursor):
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE job_search_results SET is_applied = 1, applied_at = ? WHERE id = ?
-            """, (now, job_id))
+            """,
+                (now, job_id),
+            )
             return cursor.rowcount > 0
 
     def unmark_applied(self, job_id: int) -> bool:
         """Unmark a job as applied"""
         with get_cursor() as (conn, cursor):
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE job_search_results SET is_applied = 0, applied_at = NULL WHERE id = ?
-            """, (job_id,))
+            """,
+                (job_id,),
+            )
             return cursor.rowcount > 0
 
     # Bulk operations
@@ -345,9 +433,12 @@ class JobSearchResultsService:
             return 0
         with get_cursor() as (conn, cursor):
             placeholders = ",".join("?" * len(job_ids))
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 UPDATE job_search_results SET is_hidden = 1 WHERE id IN ({placeholders})
-            """, job_ids)
+            """,
+                job_ids,
+            )
             return cursor.rowcount
 
     def unhide_jobs_bulk(self, job_ids: list[int]) -> int:
@@ -356,9 +447,12 @@ class JobSearchResultsService:
             return 0
         with get_cursor() as (conn, cursor):
             placeholders = ",".join("?" * len(job_ids))
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 UPDATE job_search_results SET is_hidden = 0 WHERE id IN ({placeholders})
-            """, job_ids)
+            """,
+                job_ids,
+            )
             return cursor.rowcount
 
     def mark_applied_bulk(self, job_ids: list[int]) -> int:
@@ -368,10 +462,13 @@ class JobSearchResultsService:
         now = datetime.now().isoformat()
         with get_cursor() as (conn, cursor):
             placeholders = ",".join("?" * len(job_ids))
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 UPDATE job_search_results SET is_applied = 1, applied_at = ?
                 WHERE id IN ({placeholders})
-            """, [now] + job_ids)
+            """,
+                [now] + job_ids,
+            )
             return cursor.rowcount
 
     def unmark_applied_bulk(self, job_ids: list[int]) -> int:
@@ -380,10 +477,13 @@ class JobSearchResultsService:
             return 0
         with get_cursor() as (conn, cursor):
             placeholders = ",".join("?" * len(job_ids))
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 UPDATE job_search_results SET is_applied = 0, applied_at = NULL
                 WHERE id IN ({placeholders})
-            """, job_ids)
+            """,
+                job_ids,
+            )
             return cursor.rowcount
 
     def delete_jobs_bulk(self, job_ids: list[int]) -> int:
@@ -392,9 +492,12 @@ class JobSearchResultsService:
             return 0
         with get_cursor() as (conn, cursor):
             placeholders = ",".join("?" * len(job_ids))
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 DELETE FROM job_search_results WHERE id IN ({placeholders})
-            """, job_ids)
+            """,
+                job_ids,
+            )
             return cursor.rowcount
 
     def get_applied_jobs(self) -> list[SavedJobResult]:
@@ -408,14 +511,14 @@ class JobSearchResultsService:
             rows = cursor.fetchall()
             return [self._row_to_result(row) for row in rows]
 
-    def get_result_by_id(self, job_id: int) -> Optional[SavedJobResult]:
+    def get_result_by_id(self, job_id: int) -> SavedJobResult | None:
         """Get a specific job result by ID"""
         with get_cursor() as (conn, cursor):
             cursor.execute("SELECT * FROM job_search_results WHERE id = ?", (job_id,))
             row = cursor.fetchone()
             return self._row_to_result(row) if row else None
 
-    def get_latest_search_info(self) -> Optional[dict]:
+    def get_latest_search_info(self) -> dict | None:
         """Get info about the most recent search"""
         with get_cursor() as (conn, cursor):
             cursor.execute("""
@@ -444,15 +547,18 @@ class JobSearchResultsService:
                 }
             return None
 
-    def get_result_count(self, hours: Optional[int] = None) -> int:
+    def get_result_count(self, hours: int | None = None) -> int:
         """Get the total number of results, optionally filtered by time"""
         with get_cursor() as (conn, cursor):
             if hours:
                 cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT COUNT(*) as count FROM job_search_results
                     WHERE last_seen_at >= ? AND is_hidden = 0
-                """, (cutoff,))
+                """,
+                    (cutoff,),
+                )
             else:
                 cursor.execute("""
                     SELECT COUNT(*) as count FROM job_search_results
@@ -484,17 +590,23 @@ class JobSearchResultsService:
 
         with get_cursor() as (conn, cursor):
             # Count how many will be deleted
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT COUNT(*) as count FROM job_search_results
                 WHERE last_seen_at < ? AND is_applied = 0
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
             count = cursor.fetchone()["count"]
 
             # Delete old jobs (preserve applied ones)
-            cursor.execute("""
+            cursor.execute(
+                """
                 DELETE FROM job_search_results
                 WHERE last_seen_at < ? AND is_applied = 0
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
 
             return count
 
@@ -550,6 +662,7 @@ class JobSearchResultsService:
             id=row["id"],
             title=row["title"],
             company=row["company"],
+            company_logo=row["company_logo"] if "company_logo" in row.keys() else None,
             location=row["location"],
             date_posted=row["date_posted"],
             job_url=row["job_url"],

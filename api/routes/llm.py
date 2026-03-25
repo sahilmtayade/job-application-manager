@@ -319,7 +319,9 @@ async def fetch_job_url(request: FetchJobUrlRequest):
     Returns success/failure and a short text preview.
     """
     service = LLMService()
-    success, error, text, preview_image_url, raw_html = await service.fetch_job_posting_url(request.url)
+    success, error, text, preview_image_url, raw_html = await service.fetch_job_posting_url(
+        request.url
+    )
     if not success:
         return FetchJobUrlResponse(success=False, error=error)
     preview = text[:300].strip() if text else ""

@@ -2,7 +2,7 @@
 
 from jam.db.connection import get_cursor
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 TABLES = """
 -- Companies table
@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS job_search_results (
     job_url TEXT NOT NULL UNIQUE,
     site_source TEXT NOT NULL,
     description TEXT,
+    company_logo TEXT,
     salary_min REAL,
     salary_max REAL,
     job_type TEXT,
@@ -200,16 +201,10 @@ def init_db() -> None:
         cursor.execute("SELECT version FROM schema_version LIMIT 1")
         row = cursor.fetchone()
         if row is None:
-            cursor.execute(
-                "INSERT INTO schema_version (version) VALUES (?)",
-                (SCHEMA_VERSION,)
-            )
+            cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
         else:
             # Update schema version
-            cursor.execute(
-                "UPDATE schema_version SET version = ?",
-                (SCHEMA_VERSION,)
-            )
+            cursor.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
 
 
 def _run_migrations(cursor) -> None:
@@ -243,7 +238,7 @@ def _run_migrations(cursor) -> None:
             cursor.execute(
                 """INSERT INTO application_events (application_id, from_status, to_status, timestamp)
                    VALUES (?, NULL, ?, ?)""",
-                (app_id, status, created)
+                (app_id, status, created),
             )
 
         # Step 2: Create new applications table without status column
@@ -344,7 +339,9 @@ def _run_migrations(cursor) -> None:
         """)
 
     # Migration v8: Add job_search_results table
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='job_search_results'")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='job_search_results'"
+    )
     if not cursor.fetchone():
         cursor.execute("""
             CREATE TABLE job_search_results (
@@ -388,12 +385,16 @@ def _run_migrations(cursor) -> None:
         cursor.execute("ALTER TABLE job_search_results ADD COLUMN first_seen_at TIMESTAMP")
         # Populate from searched_at if it exists
         if "searched_at" in jsr_columns:
-            cursor.execute("UPDATE job_search_results SET first_seen_at = searched_at WHERE first_seen_at IS NULL")
+            cursor.execute(
+                "UPDATE job_search_results SET first_seen_at = searched_at WHERE first_seen_at IS NULL"
+            )
     if "last_seen_at" not in jsr_columns:
         cursor.execute("ALTER TABLE job_search_results ADD COLUMN last_seen_at TIMESTAMP")
         # Populate from searched_at if it exists
         if "searched_at" in jsr_columns:
-            cursor.execute("UPDATE job_search_results SET last_seen_at = searched_at WHERE last_seen_at IS NULL")
+            cursor.execute(
+                "UPDATE job_search_results SET last_seen_at = searched_at WHERE last_seen_at IS NULL"
+            )
 
     # Migration v10: Add llm_notes column for detailed reasoning
     if "llm_notes" not in jsr_columns:
@@ -415,8 +416,14 @@ def _run_migrations(cursor) -> None:
     if "search_offset" not in jsr_columns:
         cursor.execute("ALTER TABLE job_search_results ADD COLUMN search_offset INTEGER DEFAULT 0")
 
+    # Migration v14: Add company_logo column
+    if "company_logo" not in jsr_columns:
+        cursor.execute("ALTER TABLE job_search_results ADD COLUMN company_logo TEXT")
+
     # Migration v9: Add job_search_filters table
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='job_search_filters'")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='job_search_filters'"
+    )
     if not cursor.fetchone():
         cursor.execute("""
             CREATE TABLE job_search_filters (
@@ -430,8 +437,12 @@ def _run_migrations(cursor) -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_filters_type ON job_search_filters(filter_type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_filters_keyword ON job_search_filters(keyword)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_job_search_filters_type ON job_search_filters(filter_type)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_job_search_filters_keyword ON job_search_filters(keyword)"
+        )
 
     # Migration v9: Add suggested_bans table
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='suggested_bans'")
@@ -447,19 +458,39 @@ def _run_migrations(cursor) -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_suggested_bans_status ON suggested_bans(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_suggested_bans_company ON suggested_bans(company_name)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_suggested_bans_status ON suggested_bans(status)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_suggested_bans_company ON suggested_bans(company_name)"
+        )
 
     # Create v9 indexes (these depend on columns added in migrations)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_results_first_seen_at ON job_search_results(first_seen_at DESC)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_results_last_seen_at ON job_search_results(last_seen_at DESC)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_results_job_url ON job_search_results(job_url)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_results_llm_score ON job_search_results(llm_score DESC)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_results_is_hidden ON job_search_results(is_hidden)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_filters_type ON job_search_filters(filter_type)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_search_filters_keyword ON job_search_filters(keyword)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_job_search_results_first_seen_at ON job_search_results(first_seen_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_job_search_results_last_seen_at ON job_search_results(last_seen_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_job_search_results_job_url ON job_search_results(job_url)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_job_search_results_llm_score ON job_search_results(llm_score DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_job_search_results_is_hidden ON job_search_results(is_hidden)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_job_search_filters_type ON job_search_filters(filter_type)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_job_search_filters_keyword ON job_search_filters(keyword)"
+    )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_suggested_bans_status ON suggested_bans(status)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_suggested_bans_company ON suggested_bans(company_name)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_suggested_bans_company ON suggested_bans(company_name)"
+    )
 
     # Re-enable foreign keys after migration
     cursor.execute("PRAGMA foreign_keys = ON")
@@ -471,4 +502,3 @@ def get_schema_version() -> int:
         cursor.execute("SELECT version FROM schema_version LIMIT 1")
         row = cursor.fetchone()
         return row["version"] if row else 0
-

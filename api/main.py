@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from jam.db.schema import init_db
 
-from api.routes import applications, stats, companies, config, goals, notes, backup, banned, files, banned_sources, llm, job_search
+from api.routes import applications, stats, companies, config, goals, notes, backup, banned, files, banned_sources, llm, job_search, logos
 
 
 @asynccontextmanager
@@ -45,6 +45,7 @@ app.include_router(banned_sources.router, prefix="/api/banned-sources", tags=["b
 app.include_router(files.router, prefix="/api/applications", tags=["files"])
 app.include_router(llm.router, prefix="/api/llm", tags=["llm"])
 app.include_router(job_search.router, prefix="/api/job-search", tags=["job-search"])
+app.include_router(logos.router, prefix="/api/logos", tags=["logos"])
 
 
 @app.get("/api/health")

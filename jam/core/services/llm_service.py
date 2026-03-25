@@ -535,9 +535,8 @@ RESUME TEXT:
 
     # Prompt for extracting job data from plain text (URL-fetched postings)
     JOB_TEXT_EXTRACTION_PROMPT = """Extract job posting information from the plain text below.
-Return ONLY a valid JSON object within a markdown code block, with these fields (use null for missing information):
+Return ONLY a valid JSON object with these fields (use null for missing information):
 
-```json
 {{
   "company_name": "The company name",
   "position": "The job title/position",
@@ -547,10 +546,9 @@ Return ONLY a valid JSON object within a markdown code block, with these fields 
   "location_address": "City, State or location if mentioned",
   "notes": "Brief summary: salary range, key requirements, benefits if mentioned"
 }}
-```
 
 Important:
-- Return ONLY the JSON object within a markdown code block, no other text
+- Return ONLY the JSON object, no other text
 - Use null for any field you cannot determine
 - For work_location, only use: "remote", "onsite", or "hybrid"
 - Keep notes concise (max 200 characters)
@@ -821,28 +819,17 @@ Critical Rules:
 
     def _parse_extraction_response(self, response: str) -> ExtractedJobData:
         """Parse the LLM response into ExtractedJobData"""
-        # Remove thinking tags if present
-        cleaned = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
-        # Remove markdown code blocks if present
-        cleaned = re.sub(r'```\w*\n?', '', cleaned)
-        cleaned = re.sub(r'\n?```', '', cleaned)
-        cleaned = cleaned.strip()
+        # Try to extract JSON from response (handle cases where model adds extra text)
+        json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
+        if not json_match:
+            logger.warning(f"No JSON found in response: {response[:200]}")
+            raise ValueError("Could not parse job data from image")
 
-        data = None
         try:
-            data = json.loads(cleaned)
-        except json.JSONDecodeError:
-            # Try to extract JSON block
-            json_match = re.search(r'\{[\s\S]*\}', cleaned)
-            if json_match:
-                try:
-                    data = json.loads(json_match.group())
-                except json.JSONDecodeError as e:
-                    logger.warning(f"JSON parse error: {e}, response: {response[:200]}")
-                    raise ValueError("Could not parse job data from image")
-            else:
-                logger.warning(f"No JSON found in response: {response[:200]}")
-                raise ValueError("Could not parse job data from image")
+            data = json.loads(json_match.group())
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parse error: {e}, response: {response[:200]}")
+            raise ValueError("Could not parse job data from image")
 
         # Normalize work_location
         work_location = data.get("work_location")
@@ -938,7 +925,7 @@ Critical Rules:
     def _extract_text_from_html(html: str) -> str:
         """Extract readable text from HTML using BeautifulSoup."""
         soup = BeautifulSoup(html, "html.parser")
-        for tag in soup(["script", "style", "noscript", "head", "nav", "footer", "header", "aside", "form", "iframe", "svg", "button", "img"]):
+        for tag in soup(["script", "style", "noscript", "head", "nav", "footer", "header"]):
             tag.decompose()
         text = soup.get_text(separator="\n")
         # Collapse excessive blank lines
@@ -989,7 +976,9 @@ Critical Rules:
             return "page too short (likely blocked or empty)"
         return None
 
-    async def fetch_job_posting_url(self, url: str) -> tuple[bool, str, str, str | None, str | None]:
+    async def fetch_job_posting_url(
+        self, url: str
+    ) -> tuple[bool, str, str, str | None, str | None]:
         """
         Fetch a job posting URL and return extracted text.
 
@@ -1074,9 +1063,21 @@ Critical Rules:
             return True, "", text, preview_image_url, raw_html
 
         except httpx.TimeoutException:
-            return False, "Request timed out. The site may be slow or blocking access.", "", None, None
+            return (
+                False,
+                "Request timed out. The site may be slow or blocking access.",
+                "",
+                None,
+                None,
+            )
         except httpx.ConnectError:
-            return False, "Could not connect to the URL. Check the URL or your network.", "", None, None
+            return (
+                False,
+                "Could not connect to the URL. Check the URL or your network.",
+                "",
+                None,
+                None,
+            )
         except Exception as e:
             logger.error(f"URL fetch error: {e}")
             return False, f"Failed to fetch URL: {str(e)}", "", None, None

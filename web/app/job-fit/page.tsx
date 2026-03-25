@@ -2,25 +2,25 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-    AlertTriangle,
+  AlertTriangle,
   Braces,
-    Camera,
-    CheckCircle2,
+  Camera,
+  CheckCircle2,
   Code2,
-    FileText,
-    HelpCircle,
-    Image as ImageIcon,
-    Lightbulb,
-    Link,
-    Loader2,
-    Plus,
-    Shield,
-    Sparkles,
-    Target,
-    Trash2,
-    Upload,
-    X,
-    XCircle,
+  FileText,
+  HelpCircle,
+  Image as ImageIcon,
+  Lightbulb,
+  Link,
+  Loader2,
+  Plus,
+  Shield,
+  Sparkles,
+  Target,
+  Trash2,
+  Upload,
+  X,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -28,10 +28,13 @@ import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -39,11 +42,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui/tooltip";
 
 import { llmApi, resumeApi } from "@/lib/api";
@@ -65,7 +71,10 @@ export default function JobFitPage() {
   // Screenshot mode state — supports multiple images
   const [jobPostingFiles, setJobPostingFiles] = useState<File[]>([]);
   const [jobPostingPreviews, setJobPostingPreviews] = useState<string[]>([]);
-  const [parsedJobPreview, setParsedJobPreview] = useState<Record<string, unknown> | null>(null);
+  const [parsedJobPreview, setParsedJobPreview] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const [isPreviewingParsedJob, setIsPreviewingParsedJob] = useState(false);
   const screenshotDropRef = useRef<HTMLDivElement>(null);
 
@@ -76,12 +85,16 @@ export default function JobFitPage() {
   const [urlFetchError, setUrlFetchError] = useState<string | null>(null);
   const [urlParsedStatus, setUrlParsedStatus] = useState<UrlStepStatus>("idle");
   const [urlParsedError, setUrlParsedError] = useState<string | null>(null);
-  const [urlAnalysisStatus, setUrlAnalysisStatus] = useState<UrlStepStatus>("idle");
+  const [urlAnalysisStatus, setUrlAnalysisStatus] =
+    useState<UrlStepStatus>("idle");
   const [urlAnalysisError, setUrlAnalysisError] = useState<string | null>(null);
   const [urlPreviewImage, setUrlPreviewImage] = useState<string | null>(null);
   const [urlPreviewText, setUrlPreviewText] = useState<string | null>(null);
   const [urlRawHtml, setUrlRawHtml] = useState<string | null>(null);
-  const [urlParsedPreview, setUrlParsedPreview] = useState<Record<string, unknown> | null>(null);
+  const [urlParsedPreview, setUrlParsedPreview] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
 
   // Analysis state
   const [analysis, setAnalysis] = useState<FitAnalysis | null>(null);
@@ -136,7 +149,8 @@ export default function JobFitPage() {
   const handleResumeSelect = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
-    const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
+    const allowed =
+      file.type.startsWith("image/") || file.type === "application/pdf";
     if (!allowed) {
       toast.error("Please upload a PDF or image file.");
       return;
@@ -154,7 +168,9 @@ export default function JobFitPage() {
       return;
     }
     if (images.length < arr.length) {
-      toast.warning(`${arr.length - images.length} non-image file(s) were skipped`);
+      toast.warning(
+        `${arr.length - images.length} non-image file(s) were skipped`,
+      );
     }
     setJobPostingFiles((prev) => [...prev, ...images]);
     images.forEach((img) => {
@@ -178,7 +194,9 @@ export default function JobFitPage() {
       if (jobInputMode !== "screenshot") return;
       const items = e.clipboardData?.items;
       if (!items) return;
-      const imageItems = Array.from(items).filter((i) => i.type.startsWith("image/"));
+      const imageItems = Array.from(items).filter((i) =>
+        i.type.startsWith("image/"),
+      );
       if (imageItems.length === 0) return;
       e.preventDefault();
       const files = imageItems
@@ -186,7 +204,9 @@ export default function JobFitPage() {
         .filter((f): f is File => f !== null);
       if (files.length > 0) {
         addJobPostingFiles(files);
-        toast.success(`Pasted ${files.length} image${files.length > 1 ? "s" : ""} from clipboard`);
+        toast.success(
+          `Pasted ${files.length} image${files.length > 1 ? "s" : ""} from clipboard`,
+        );
       }
     };
     window.addEventListener("paste", handlePaste);
@@ -199,7 +219,7 @@ export default function JobFitPage() {
       e.preventDefault();
       addJobPostingFiles(e.dataTransfer.files);
     },
-    [addJobPostingFiles]
+    [addJobPostingFiles],
   );
 
   // Save resume for future use
@@ -222,7 +242,10 @@ export default function JobFitPage() {
       setParsedJobPreview(parsed);
       toast.success("Parsed preview generated");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to generate parsed preview";
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to generate parsed preview";
       toast.error(message);
     } finally {
       setIsPreviewingParsedJob(false);
@@ -254,7 +277,7 @@ export default function JobFitPage() {
       toast.error(
         jobInputMode === "screenshot"
           ? "Please upload at least one job posting screenshot"
-          : "Please enter a job posting URL"
+          : "Please enter a job posting URL",
       );
       return;
     }
@@ -304,7 +327,10 @@ export default function JobFitPage() {
           setUrlRawHtml(fetchResult.raw_html || null);
           setUrlFetchStatus("success");
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Failed to fetch URL content";
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch URL content";
           setUrlFetchStatus("error");
           setUrlFetchError(message);
           toast.error(message);
@@ -317,7 +343,10 @@ export default function JobFitPage() {
           setUrlParsedPreview(parsed);
           setUrlParsedStatus("success");
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Failed to extract JSON from URL";
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to extract JSON from URL";
           setUrlParsedStatus("error");
           setUrlParsedError(message);
           toast.error(message);
@@ -328,11 +357,14 @@ export default function JobFitPage() {
           result = await llmApi.analyzeFitFromUrlStream(
             trimmedUrl,
             resumeBase64,
-            (progress) => setAnalysisProgress(progress)
+            (progress) => setAnalysisProgress(progress),
           );
           setUrlAnalysisStatus("success");
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Failed to analyze job fit from URL";
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to analyze job fit from URL";
           setUrlAnalysisStatus("error");
           setUrlAnalysisError(message);
           toast.error(message);
@@ -346,14 +378,15 @@ export default function JobFitPage() {
         result = await llmApi.analyzeFitStream(
           jobPostingBase64,
           resumeBase64,
-          (progress) => setAnalysisProgress(progress)
+          (progress) => setAnalysisProgress(progress),
         );
       }
 
       setAnalysis(result);
       toast.success("Analysis complete!");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to analyze job fit";
+      const message =
+        error instanceof Error ? error.message : "Failed to analyze job fit";
       toast.error(message);
     } finally {
       setIsAnalyzing(false);
@@ -371,8 +404,10 @@ export default function JobFitPage() {
 
   // Get risk level color
   const getRiskColor = (level: string) => {
-    if (level === "low") return "bg-green-500/10 text-green-500 border-green-500/20";
-    if (level === "medium") return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
+    if (level === "low")
+      return "bg-green-500/10 text-green-500 border-green-500/20";
+    if (level === "medium")
+      return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
     return "bg-red-500/10 text-red-500 border-red-500/20";
   };
 
@@ -383,7 +418,8 @@ export default function JobFitPage() {
           <DialogHeader className="px-6 pt-6 pb-2 border-b">
             <DialogTitle>URL Processing Preview</DialogTitle>
             <DialogDescription>
-              Review scraped screenshot metadata, raw HTML, and extracted JSON before AI fit analysis.
+              Review scraped screenshot metadata, raw HTML, and extracted JSON
+              before AI fit analysis.
             </DialogDescription>
           </DialogHeader>
 
@@ -403,8 +439,12 @@ export default function JobFitPage() {
                   </div>
                 ) : urlFetchStatus === "error" ? (
                   <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
-                    <p className="font-medium">Could not fetch screenshot metadata</p>
-                    <p className="mt-1 text-xs">{urlFetchError || "URL fetch failed"}</p>
+                    <p className="font-medium">
+                      Could not fetch screenshot metadata
+                    </p>
+                    <p className="mt-1 text-xs">
+                      {urlFetchError || "URL fetch failed"}
+                    </p>
                   </div>
                 ) : urlPreviewImage ? (
                   <img
@@ -437,11 +477,15 @@ export default function JobFitPage() {
                 ) : urlFetchStatus === "error" ? (
                   <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
                     <p className="font-medium">No HTML available</p>
-                    <p className="mt-1 text-xs">{urlFetchError || "URL fetch failed"}</p>
+                    <p className="mt-1 text-xs">
+                      {urlFetchError || "URL fetch failed"}
+                    </p>
                   </div>
                 ) : urlRawHtml ? (
                   <div className="rounded-md border bg-muted/20 p-3 max-h-64 overflow-auto">
-                    <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words">{urlRawHtml}</pre>
+                    <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words">
+                      {urlRawHtml}
+                    </pre>
                   </div>
                 ) : (
                   <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
@@ -467,7 +511,9 @@ export default function JobFitPage() {
                 ) : urlParsedStatus === "error" ? (
                   <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
                     <p className="font-medium">JSON extraction failed</p>
-                    <p className="mt-1 text-xs">{urlParsedError || "Could not extract JSON"}</p>
+                    <p className="mt-1 text-xs">
+                      {urlParsedError || "Could not extract JSON"}
+                    </p>
                   </div>
                 ) : urlParsedPreview ? (
                   <div className="rounded-md border bg-muted/20 p-3 max-h-64 overflow-auto">
@@ -496,11 +542,16 @@ export default function JobFitPage() {
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        {analysisProgress?.message || "Generating fit analysis..."}
+                        {analysisProgress?.message ||
+                          "Generating fit analysis..."}
                       </div>
                       {analysisProgress && (
                         <Progress
-                          value={(analysisProgress.phase / analysisProgress.totalPhases) * 100}
+                          value={
+                            (analysisProgress.phase /
+                              analysisProgress.totalPhases) *
+                            100
+                          }
                           className="h-2"
                         />
                       )}
@@ -508,11 +559,14 @@ export default function JobFitPage() {
                   ) : urlAnalysisStatus === "error" ? (
                     <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
                       <p className="font-medium">Fit generation failed</p>
-                      <p className="mt-1 text-xs">{urlAnalysisError || "Failed to generate fit analysis"}</p>
+                      <p className="mt-1 text-xs">
+                        {urlAnalysisError || "Failed to generate fit analysis"}
+                      </p>
                     </div>
                   ) : urlAnalysisStatus === "success" ? (
                     <div className="rounded-md border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-700 dark:text-green-300">
-                      Fit analysis generated successfully. See detailed results below.
+                      Fit analysis generated successfully. See detailed results
+                      below.
                     </div>
                   ) : (
                     <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
@@ -544,9 +598,11 @@ export default function JobFitPage() {
                     AI-Powered Job Fit Analysis
                   </p>
                   <p className="text-blue-600/80 dark:text-blue-400/80 mt-1">
-                    Provide your resume and a job posting (via URL or screenshot) to get a detailed
-                    compatibility analysis, including skills match, experience level check, and scam detection.
-                    PDF resumes are preferred — text is extracted directly for better accuracy.
+                    Provide your resume and a job posting (via URL or
+                    screenshot) to get a detailed compatibility analysis,
+                    including skills match, experience level check, and scam
+                    detection. PDF resumes are preferred — text is extracted
+                    directly for better accuracy.
                   </p>
                 </div>
               </div>
@@ -562,7 +618,8 @@ export default function JobFitPage() {
                   Your Resume
                 </CardTitle>
                 <CardDescription>
-                  Upload a new resume or use your previously saved one. PDF and image formats supported.
+                  Upload a new resume or use your previously saved one. PDF and
+                  image formats supported.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -580,9 +637,10 @@ export default function JobFitPage() {
                     }}
                     className={`
                       p-3 rounded-lg border-2 cursor-pointer transition-colors
-                      ${useStoredResume && !resumeFile
-                        ? "border-primary bg-primary/5"
-                        : "border-muted hover:border-muted-foreground/50"
+                      ${
+                        useStoredResume && !resumeFile
+                          ? "border-primary bg-primary/5"
+                          : "border-muted hover:border-muted-foreground/50"
                       }
                     `}
                   >
@@ -590,12 +648,16 @@ export default function JobFitPage() {
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-muted-foreground" />
                         <div>
-                          <p className="text-sm font-medium">{storedResume.filename}</p>
+                          <p className="text-sm font-medium">
+                            {storedResume.filename}
+                          </p>
                           <p className="text-xs text-muted-foreground">
-                            Uploaded {storedResume.uploaded_at
-                              ? new Date(storedResume.uploaded_at).toLocaleDateString()
-                              : "previously"
-                            }
+                            Uploaded{" "}
+                            {storedResume.uploaded_at
+                              ? new Date(
+                                  storedResume.uploaded_at,
+                                ).toLocaleDateString()
+                              : "previously"}
                           </p>
                         </div>
                       </div>
@@ -630,7 +692,9 @@ export default function JobFitPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4" />
-                        <span className="text-sm font-medium">{resumeFile.name}</span>
+                        <span className="text-sm font-medium">
+                          {resumeFile.name}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
@@ -651,7 +715,8 @@ export default function JobFitPage() {
                           className="h-8 w-8"
                           onClick={() => {
                             setResumeFile(null);
-                            if (storedResume?.has_resume) setUseStoredResume(true);
+                            if (storedResume?.has_resume)
+                              setUseStoredResume(true);
                           }}
                         >
                           <X className="h-4 w-4" />
@@ -662,7 +727,9 @@ export default function JobFitPage() {
                     <div className="flex flex-col items-center justify-center py-4 text-center">
                       <Upload className="h-8 w-8 text-muted-foreground/50 mb-2" />
                       <label className="text-sm text-muted-foreground cursor-pointer">
-                        <span className="text-primary hover:underline">Upload resume (PDF or image)</span>
+                        <span className="text-primary hover:underline">
+                          Upload resume (PDF or image)
+                        </span>
                         <input
                           type="file"
                           accept="application/pdf,image/*"
@@ -690,16 +757,43 @@ export default function JobFitPage() {
                       <TooltipTrigger asChild>
                         <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-xs text-sm space-y-2 p-3">
-                        <p className="font-semibold">How to provide the job posting</p>
-                        <p><strong>URL:</strong> Paste the direct job posting link. Works best on sites that do not block bots (e.g. company career pages). LinkedIn/Indeed may block access — use screenshots instead.</p>
-                        <p><strong>Screenshot tips:</strong></p>
+                      <TooltipContent
+                        side="bottom"
+                        className="max-w-xs text-sm space-y-2 p-3"
+                      >
+                        <p className="font-semibold">
+                          How to provide the job posting
+                        </p>
+                        <p>
+                          <strong>URL:</strong> Paste the direct job posting
+                          link. Works best on sites that do not block bots (e.g.
+                          company career pages). LinkedIn/Indeed may block
+                          access — use screenshots instead.
+                        </p>
+                        <p>
+                          <strong>Screenshot tips:</strong>
+                        </p>
                         <ul className="list-disc ml-4 space-y-1">
-                          <li>Capture the full posting including title, requirements, and description.</li>
-                          <li><strong>Windows:</strong> Press <kbd>Win+Shift+S</kbd> to open Snipping Tool, select the area, then paste here with <kbd>Ctrl+V</kbd>.</li>
-                          <li><strong>Mac:</strong> Press <kbd>Cmd+Shift+4</kbd>, drag to select, then paste with <kbd>Cmd+V</kbd>.</li>
-                          <li>If the posting is long, take multiple screenshots and upload them all.</li>
-                          <li>Drag &amp; drop images or use the file picker.</li>
+                          <li>
+                            Capture the full posting including title,
+                            requirements, and description.
+                          </li>
+                          <li>
+                            <strong>Windows:</strong> Press{" "}
+                            <kbd>Win+Shift+S</kbd> to open Snipping Tool, select
+                            the area, then paste here with <kbd>Ctrl+V</kbd>.
+                          </li>
+                          <li>
+                            <strong>Mac:</strong> Press <kbd>Cmd+Shift+4</kbd>,
+                            drag to select, then paste with <kbd>Cmd+V</kbd>.
+                          </li>
+                          <li>
+                            If the posting is long, take multiple screenshots
+                            and upload them all.
+                          </li>
+                          <li>
+                            Drag &amp; drop images or use the file picker.
+                          </li>
                         </ul>
                       </TooltipContent>
                     </Tooltip>
@@ -777,12 +871,14 @@ export default function JobFitPage() {
                     </div>
 
                     <p className="text-xs text-muted-foreground">
-                      Click <span className="font-medium">Analyze Job Fit</span> once to run all URL steps and open a full preview popup.
+                      Click <span className="font-medium">Analyze Job Fit</span>{" "}
+                      once to run all URL steps and open a full preview popup.
                     </p>
 
                     <p className="text-xs text-muted-foreground">
-                      Works best on company career pages. LinkedIn, Indeed, and similar sites often block
-                      automated access — use screenshots for those.
+                      Works best on company career pages. LinkedIn, Indeed, and
+                      similar sites often block automated access — use
+                      screenshots for those.
                     </p>
                   </div>
                 ) : (
@@ -798,21 +894,28 @@ export default function JobFitPage() {
                       <div className="flex flex-col items-center justify-center py-4 text-center">
                         <Upload className="h-8 w-8 text-muted-foreground/50 mb-2" />
                         <label className="text-sm text-muted-foreground cursor-pointer">
-                          <span className="text-primary hover:underline">Upload screenshot(s)</span>
+                          <span className="text-primary hover:underline">
+                            Upload screenshot(s)
+                          </span>
                           <input
                             type="file"
                             accept="image/*"
                             multiple
                             className="hidden"
                             onChange={(e) => {
-                              if (e.target.files) addJobPostingFiles(e.target.files);
+                              if (e.target.files)
+                                addJobPostingFiles(e.target.files);
                               setParsedJobPreview(null);
                               e.target.value = "";
                             }}
                           />
                         </label>
                         <p className="text-xs text-muted-foreground/70 mt-1">
-                          JPEG, PNG, WebP · drag &amp; drop · or <kbd className="px-1 py-0.5 rounded bg-muted text-xs">Ctrl+V</kbd> to paste
+                          JPEG, PNG, WebP · drag &amp; drop · or{" "}
+                          <kbd className="px-1 py-0.5 rounded bg-muted text-xs">
+                            Ctrl+V
+                          </kbd>{" "}
+                          to paste
                         </p>
                         <p className="text-xs text-muted-foreground/60 mt-0.5">
                           Multiple screenshots supported for long postings
@@ -824,7 +927,10 @@ export default function JobFitPage() {
                     {jobPostingFiles.length > 0 && (
                       <div className="space-y-2">
                         {jobPostingFiles.map((file, idx) => (
-                          <div key={idx} className="rounded-lg border bg-muted/30 overflow-hidden">
+                          <div
+                            key={idx}
+                            className="rounded-lg border bg-muted/30 overflow-hidden"
+                          >
                             <div className="flex items-center justify-between px-3 py-2">
                               <span className="text-sm font-medium truncate max-w-[180px]">
                                 {file.name || `Screenshot ${idx + 1}`}
@@ -856,7 +962,8 @@ export default function JobFitPage() {
                             multiple
                             className="hidden"
                             onChange={(e) => {
-                              if (e.target.files) addJobPostingFiles(e.target.files);
+                              if (e.target.files)
+                                addJobPostingFiles(e.target.files);
                               setParsedJobPreview(null);
                               e.target.value = "";
                             }}
@@ -868,7 +975,10 @@ export default function JobFitPage() {
                             variant="outline"
                             size="sm"
                             onClick={handlePreviewParsedJob}
-                            disabled={isPreviewingParsedJob || jobPostingFiles.length === 0}
+                            disabled={
+                              isPreviewingParsedJob ||
+                              jobPostingFiles.length === 0
+                            }
                             className="gap-2"
                           >
                             {isPreviewingParsedJob ? (
@@ -907,8 +1017,10 @@ export default function JobFitPage() {
                     {/* Help hint */}
                     {jobPostingFiles.length === 0 && (
                       <p className="text-xs text-muted-foreground/70">
-                        <strong>Tip:</strong> Scroll through the full job posting before screenshotting.
-                        Capture the job title, requirements, responsibilities, and any salary/location info.
+                        <strong>Tip:</strong> Scroll through the full job
+                        posting before screenshotting. Capture the job title,
+                        requirements, responsibilities, and any salary/location
+                        info.
                       </p>
                     )}
                   </div>
@@ -922,7 +1034,11 @@ export default function JobFitPage() {
             <Button
               size="lg"
               onClick={handleAnalyze}
-              disabled={isAnalyzing || !hasJobPosting || (!resumeFile && !storedResume?.has_resume)}
+              disabled={
+                isAnalyzing ||
+                !hasJobPosting ||
+                (!resumeFile && !storedResume?.has_resume)
+              }
               className="gap-2"
             >
               {isAnalyzing ? (
@@ -933,7 +1049,9 @@ export default function JobFitPage() {
               ) : (
                 <>
                   <Sparkles className="h-5 w-5" />
-                  {jobInputMode === "url" ? "Analyze URL Job Fit" : "Analyze Job Fit"}
+                  {jobInputMode === "url"
+                    ? "Analyze URL Job Fit"
+                    : "Analyze Job Fit"}
                 </>
               )}
             </Button>
@@ -946,14 +1064,23 @@ export default function JobFitPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium">
-                      Phase {analysisProgress.phase} of {analysisProgress.totalPhases}
+                      Phase {analysisProgress.phase} of{" "}
+                      {analysisProgress.totalPhases}
                     </span>
                     <span className="text-muted-foreground">
-                      {Math.round((analysisProgress.phase / analysisProgress.totalPhases) * 100)}%
+                      {Math.round(
+                        (analysisProgress.phase /
+                          analysisProgress.totalPhases) *
+                          100,
+                      )}
+                      %
                     </span>
                   </div>
                   <Progress
-                    value={(analysisProgress.phase / analysisProgress.totalPhases) * 100}
+                    value={
+                      (analysisProgress.phase / analysisProgress.totalPhases) *
+                      100
+                    }
                     className="h-2"
                   />
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -968,8 +1095,8 @@ export default function JobFitPage() {
                           phase < analysisProgress.phase
                             ? "bg-green-500"
                             : phase === analysisProgress.phase
-                            ? "bg-primary animate-pulse"
-                            : "bg-muted"
+                              ? "bg-primary animate-pulse"
+                              : "bg-muted"
                         }`}
                       />
                     ))}
@@ -994,28 +1121,47 @@ export default function JobFitPage() {
                 {/* Score and Summary */}
                 <div className="flex items-center gap-6">
                   <div className="text-center">
-                    <div className={`text-5xl font-bold ${getScoreColor(analysis.score)}`}>
+                    <div
+                      className={`text-5xl font-bold ${getScoreColor(analysis.score)}`}
+                    >
                       {analysis.score}
                     </div>
-                    <div className="text-sm text-muted-foreground">Match Score</div>
+                    <div className="text-sm text-muted-foreground">
+                      Match Score
+                    </div>
                   </div>
                   <div className="flex-1">
                     <Progress value={analysis.score} className="h-3" />
                     <div className="flex items-center gap-2 mt-2">
                       {analysis.compatible ? (
-                        <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
+                        <Badge
+                          variant="outline"
+                          className="bg-green-500/10 text-green-500 border-green-500/20"
+                        >
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Compatible
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">
+                        <Badge
+                          variant="outline"
+                          className="bg-red-500/10 text-red-500 border-red-500/20"
+                        >
                           <XCircle className="h-3 w-3 mr-1" />
                           Not Compatible
                         </Badge>
                       )}
-                      <Badge variant="outline" className={getRiskColor(analysis.scam_analysis.risk_level)}>
+                      <Badge
+                        variant="outline"
+                        className={getRiskColor(
+                          analysis.scam_analysis.risk_level,
+                        )}
+                      >
                         <Shield className="h-3 w-3 mr-1" />
-                        {analysis.scam_analysis.risk_level.charAt(0).toUpperCase() + analysis.scam_analysis.risk_level.slice(1)} Scam Risk
+                        {analysis.scam_analysis.risk_level
+                          .charAt(0)
+                          .toUpperCase() +
+                          analysis.scam_analysis.risk_level.slice(1)}{" "}
+                        Scam Risk
                       </Badge>
                     </div>
                   </div>
@@ -1033,44 +1179,68 @@ export default function JobFitPage() {
                   </h4>
                   <div className="grid gap-3 md:grid-cols-3">
                     <div>
-                      <p className="text-xs text-muted-foreground mb-2">Matched Skills</p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Matched Skills
+                      </p>
                       <div className="flex flex-wrap gap-1">
                         {analysis.skills_match.matched.length > 0 ? (
                           analysis.skills_match.matched.map((skill, i) => (
-                            <Badge key={i} variant="secondary" className="bg-green-500/10 text-green-600">
+                            <Badge
+                              key={i}
+                              variant="secondary"
+                              className="bg-green-500/10 text-green-600"
+                            >
                               {skill}
                             </Badge>
                           ))
                         ) : (
-                          <span className="text-sm text-muted-foreground">None identified</span>
+                          <span className="text-sm text-muted-foreground">
+                            None identified
+                          </span>
                         )}
                       </div>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-2">Missing Skills</p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Missing Skills
+                      </p>
                       <div className="flex flex-wrap gap-1">
                         {analysis.skills_match.missing.length > 0 ? (
                           analysis.skills_match.missing.map((skill, i) => (
-                            <Badge key={i} variant="secondary" className="bg-red-500/10 text-red-600">
+                            <Badge
+                              key={i}
+                              variant="secondary"
+                              className="bg-red-500/10 text-red-600"
+                            >
                               {skill}
                             </Badge>
                           ))
                         ) : (
-                          <span className="text-sm text-muted-foreground">None</span>
+                          <span className="text-sm text-muted-foreground">
+                            None
+                          </span>
                         )}
                       </div>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-2">Bonus Skills</p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Bonus Skills
+                      </p>
                       <div className="flex flex-wrap gap-1">
                         {analysis.skills_match.bonus.length > 0 ? (
                           analysis.skills_match.bonus.map((skill, i) => (
-                            <Badge key={i} variant="secondary" className="bg-blue-500/10 text-blue-600">
+                            <Badge
+                              key={i}
+                              variant="secondary"
+                              className="bg-blue-500/10 text-blue-600"
+                            >
                               {skill}
                             </Badge>
                           ))
                         ) : (
-                          <span className="text-sm text-muted-foreground">None</span>
+                          <span className="text-sm text-muted-foreground">
+                            None
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1108,7 +1278,10 @@ export default function JobFitPage() {
                       </h4>
                       <ul className="space-y-1">
                         {analysis.red_flags.map((flag, i) => (
-                          <li key={i} className="text-sm text-orange-600 dark:text-orange-400 flex items-start gap-2">
+                          <li
+                            key={i}
+                            className="text-sm text-orange-600 dark:text-orange-400 flex items-start gap-2"
+                          >
                             <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-orange-500 flex-shrink-0" />
                             {flag}
                           </li>
@@ -1127,10 +1300,15 @@ export default function JobFitPage() {
                   </h4>
                   {analysis.scam_analysis.warnings.length > 0 && (
                     <div className="mb-3">
-                      <p className="text-xs text-muted-foreground mb-2">Warnings</p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Warnings
+                      </p>
                       <ul className="space-y-1">
                         {analysis.scam_analysis.warnings.map((warning, i) => (
-                          <li key={i} className="text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
+                          <li
+                            key={i}
+                            className="text-sm text-red-600 dark:text-red-400 flex items-start gap-2"
+                          >
                             <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                             {warning}
                           </li>
@@ -1140,14 +1318,21 @@ export default function JobFitPage() {
                   )}
                   {analysis.scam_analysis.legitimate_signals.length > 0 && (
                     <div>
-                      <p className="text-xs text-muted-foreground mb-2">Legitimate Signals</p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Legitimate Signals
+                      </p>
                       <ul className="space-y-1">
-                        {analysis.scam_analysis.legitimate_signals.map((signal, i) => (
-                          <li key={i} className="text-sm text-green-600 dark:text-green-400 flex items-start gap-2">
-                            <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                            {signal}
-                          </li>
-                        ))}
+                        {analysis.scam_analysis.legitimate_signals.map(
+                          (signal, i) => (
+                            <li
+                              key={i}
+                              className="text-sm text-green-600 dark:text-green-400 flex items-start gap-2"
+                            >
+                              <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                              {signal}
+                            </li>
+                          ),
+                        )}
                       </ul>
                     </div>
                   )}
@@ -1164,7 +1349,10 @@ export default function JobFitPage() {
                       </h4>
                       <ul className="space-y-2">
                         {analysis.recommendations.map((rec, i) => (
-                          <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                          <li
+                            key={i}
+                            className="text-sm text-muted-foreground flex items-start gap-2"
+                          >
                             <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
                             {rec}
                           </li>
@@ -1181,4 +1369,3 @@ export default function JobFitPage() {
     </div>
   );
 }
-

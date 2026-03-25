@@ -10,16 +10,15 @@ import {
   Download,
   ExternalLink,
   FileCheck,
+  Globe,
   HardDrive,
   Laptop,
   Moon,
   Plus,
   RefreshCw,
-  Search,
   Settings2,
   Sun,
   Trash2,
-  User,
   XCircle
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -154,6 +153,7 @@ export default function SettingsPage() {
   const [ghostedDays, setGhostedDays] = useState("");
   const [reapplyDays, setReapplyDays] = useState("");
   const [jobSearchKeywords, setJobSearchKeywords] = useState("");
+  const [logoDevPublishableKey, setLogoDevPublishableKey] = useState("");
 
   // Candidate Profile State
   const [candidateSkills, setCandidateSkills] = useState("");
@@ -554,7 +554,48 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-
+        {/* Integrations */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5" />
+              Integrations
+            </CardTitle>
+            <CardDescription>
+              Configure third-party API keys and integration services
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-end gap-4">
+                  <div className="flex-1 space-y-2">
+                    <Label>Logo.dev Publishable Key</Label>
+                    <Input
+                      type="password"
+                      value={logoDevPublishableKey || config?.config?.logo_dev_publishable_key || ""}
+                      onChange={(e) => setLogoDevPublishableKey(e.target.value)}
+                      placeholder="pk_..."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Retrieves company logos for job search results. You must use the Publishable Key (pk_...) from Logo.dev, not the Secret Key.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => handleSave("logo_dev_publishable_key", logoDevPublishableKey)}
+                    disabled={setMutation.isPending}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         {/* AI Settings */}
         <Card>

@@ -3,63 +3,63 @@
  */
 
 import type {
-    AchievementsList,
-    Alias,
-    AliasListResponse,
-    Application,
-    ApplicationCreate,
-    ApplicationEvent,
-    ApplicationEventsResponse,
-    ApplicationFile,
-    ApplicationListResponse,
-    ApplicationUpdate,
-    BackupListResponse,
-    BannedCheckResponse,
-    BannedCompany,
-    BannedCompanyCreate,
-    BannedCompanyListResponse,
-    BannedSource,
-    BannedSourceCheckResponse,
-    BannedSourceCreate,
-    BannedSourceListResponse,
-    Company,
-    CompanyListResponse,
-    ConfigList,
-    CumulativeStats,
-    CurrentGoals,
-    ExtractedJobData,
-    FileListResponse,
-    FitAnalysis,
-    Goal,
-    GoalCreate,
-    JobFilter,
-    JobFiltersResponse,
-    JobSearchKeywords,
-    JobSearchResultsInfo,
-    LLMAnalysisStatus,
-    LLMConfig,
-    LLMConfigUpdate,
-    LLMModelsResponse,
-    LLMStatus,
-    Note,
-    ResumeData,
-    ResumeInfo,
-    SavedJobSearchResponse,
-    StatsFunnel,
-    StatsSources,
-    StatsSummary,
-    StatsTrends,
-    StatusChangeRequest,
-    ValidStatusesResponse,
-    WeeklyComparison
+  AchievementsList,
+  Alias,
+  AliasListResponse,
+  Application,
+  ApplicationCreate,
+  ApplicationEvent,
+  ApplicationEventsResponse,
+  ApplicationFile,
+  ApplicationListResponse,
+  ApplicationUpdate,
+  BackupListResponse,
+  BannedCheckResponse,
+  BannedCompany,
+  BannedCompanyCreate,
+  BannedCompanyListResponse,
+  BannedSource,
+  BannedSourceCheckResponse,
+  BannedSourceCreate,
+  BannedSourceListResponse,
+  Company,
+  CompanyListResponse,
+  ConfigList,
+  CumulativeStats,
+  CurrentGoals,
+  ExtractedJobData,
+  FileListResponse,
+  FitAnalysis,
+  Goal,
+  GoalCreate,
+  JobFilter,
+  JobFiltersResponse,
+  JobSearchKeywords,
+  JobSearchResultsInfo,
+  LLMAnalysisStatus,
+  LLMConfig,
+  LLMConfigUpdate,
+  LLMModelsResponse,
+  LLMStatus,
+  Note,
+  ResumeData,
+  ResumeInfo,
+  SavedJobSearchResponse,
+  StatsFunnel,
+  StatsSources,
+  StatsSummary,
+  StatsTrends,
+  StatusChangeRequest,
+  ValidStatusesResponse,
+  WeeklyComparison,
 } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -68,7 +68,7 @@ class ApiError extends Error {
 
 async function fetchApi<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit,
 ): Promise<T> {
   const url = `${API_URL}${endpoint}`;
 
@@ -81,7 +81,9 @@ async function fetchApi<T>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+    const error = await response
+      .json()
+      .catch(() => ({ detail: "Unknown error" }));
     throw new ApiError(response.status, error.detail || "Request failed");
   }
 
@@ -105,12 +107,15 @@ export const applicationsApi = {
     const searchParams = new URLSearchParams();
     if (params?.all) searchParams.set("all", "true");
     if (params?.status) searchParams.set("status", params.status);
-    if (params?.company_id) searchParams.set("company_id", params.company_id.toString());
+    if (params?.company_id)
+      searchParams.set("company_id", params.company_id.toString());
     if (params?.since) searchParams.set("since", params.since);
     if (params?.limit) searchParams.set("limit", params.limit.toString());
 
     const query = searchParams.toString();
-    return fetchApi<ApplicationListResponse>(`/api/applications${query ? `?${query}` : ""}`);
+    return fetchApi<ApplicationListResponse>(
+      `/api/applications${query ? `?${query}` : ""}`,
+    );
   },
 
   get: async (id: number, all?: boolean): Promise<Application> => {
@@ -146,21 +151,30 @@ export const applicationsApi = {
   },
 
   getUniqueSources: async (): Promise<string[]> => {
-    const response = await fetchApi<{ sources: string[] }>("/api/applications/sources/unique");
+    const response = await fetchApi<{ sources: string[] }>(
+      "/api/applications/sources/unique",
+    );
     return response.sources;
   },
 
   getUniquePositions: async (): Promise<string[]> => {
-    const response = await fetchApi<{ positions: string[] }>("/api/applications/positions/unique");
+    const response = await fetchApi<{ positions: string[] }>(
+      "/api/applications/positions/unique",
+    );
     return response.positions;
   },
 
   // Event management
   getEvents: async (id: number): Promise<ApplicationEventsResponse> => {
-    return fetchApi<ApplicationEventsResponse>(`/api/applications/${id}/events`);
+    return fetchApi<ApplicationEventsResponse>(
+      `/api/applications/${id}/events`,
+    );
   },
 
-  changeStatus: async (id: number, data: StatusChangeRequest): Promise<Application> => {
+  changeStatus: async (
+    id: number,
+    data: StatusChangeRequest,
+  ): Promise<Application> => {
     return fetchApi<Application>(`/api/applications/${id}/status`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -168,7 +182,9 @@ export const applicationsApi = {
   },
 
   getValidNextStatuses: async (id: number): Promise<ValidStatusesResponse> => {
-    return fetchApi<ValidStatusesResponse>(`/api/applications/${id}/status/valid-next`);
+    return fetchApi<ValidStatusesResponse>(
+      `/api/applications/${id}/status/valid-next`,
+    );
   },
 
   deleteEvent: async (id: number, eventId: number): Promise<void> => {
@@ -180,24 +196,32 @@ export const applicationsApi = {
   updateEvent: async (
     id: number,
     eventId: number,
-    data: { to_status?: string; notes?: string }
+    data: { to_status?: string; notes?: string },
   ): Promise<ApplicationEvent> => {
-    return fetchApi<ApplicationEvent>(`/api/applications/${id}/events/${eventId}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
+    return fetchApi<ApplicationEvent>(
+      `/api/applications/${id}/events/${eventId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+    );
   },
 };
 
 // Stats API
 export const statsApi = {
-  summary: async (params?: { since?: string; all?: boolean }): Promise<StatsSummary> => {
+  summary: async (params?: {
+    since?: string;
+    all?: boolean;
+  }): Promise<StatsSummary> => {
     const searchParams = new URLSearchParams();
     if (params?.since) searchParams.set("since", params.since);
     if (params?.all) searchParams.set("all", "true");
 
     const query = searchParams.toString();
-    return fetchApi<StatsSummary>(`/api/stats/summary${query ? `?${query}` : ""}`);
+    return fetchApi<StatsSummary>(
+      `/api/stats/summary${query ? `?${query}` : ""}`,
+    );
   },
 
   trends: async (params?: {
@@ -211,37 +235,53 @@ export const statsApi = {
     if (params?.all) searchParams.set("all", "true");
 
     const query = searchParams.toString();
-    return fetchApi<StatsTrends>(`/api/stats/trends${query ? `?${query}` : ""}`);
+    return fetchApi<StatsTrends>(
+      `/api/stats/trends${query ? `?${query}` : ""}`,
+    );
   },
 
-  funnel: async (params?: { since?: string; all?: boolean }): Promise<StatsFunnel> => {
+  funnel: async (params?: {
+    since?: string;
+    all?: boolean;
+  }): Promise<StatsFunnel> => {
     const searchParams = new URLSearchParams();
     if (params?.since) searchParams.set("since", params.since);
     if (params?.all) searchParams.set("all", "true");
 
     const query = searchParams.toString();
-    return fetchApi<StatsFunnel>(`/api/stats/funnel${query ? `?${query}` : ""}`);
+    return fetchApi<StatsFunnel>(
+      `/api/stats/funnel${query ? `?${query}` : ""}`,
+    );
   },
 
-  sources: async (params?: { since?: string; all?: boolean }): Promise<StatsSources> => {
+  sources: async (params?: {
+    since?: string;
+    all?: boolean;
+  }): Promise<StatsSources> => {
     const searchParams = new URLSearchParams();
     if (params?.since) searchParams.set("since", params.since);
     if (params?.all) searchParams.set("all", "true");
 
     const query = searchParams.toString();
-    return fetchApi<StatsSources>(`/api/stats/sources${query ? `?${query}` : ""}`);
+    return fetchApi<StatsSources>(
+      `/api/stats/sources${query ? `?${query}` : ""}`,
+    );
   },
 
   achievements: async (): Promise<AchievementsList> => {
     return fetchApi<AchievementsList>("/api/stats/achievements");
   },
 
-  weeklyComparison: async (params?: { all?: boolean }): Promise<WeeklyComparison> => {
+  weeklyComparison: async (params?: {
+    all?: boolean;
+  }): Promise<WeeklyComparison> => {
     const searchParams = new URLSearchParams();
     if (params?.all) searchParams.set("all", "true");
 
     const query = searchParams.toString();
-    return fetchApi<WeeklyComparison>(`/api/stats/weekly-comparison${query ? `?${query}` : ""}`);
+    return fetchApi<WeeklyComparison>(
+      `/api/stats/weekly-comparison${query ? `?${query}` : ""}`,
+    );
   },
 
   cumulative: async (params?: { all?: boolean }): Promise<CumulativeStats> => {
@@ -249,19 +289,26 @@ export const statsApi = {
     if (params?.all) searchParams.set("all", "true");
 
     const query = searchParams.toString();
-    return fetchApi<CumulativeStats>(`/api/stats/cumulative${query ? `?${query}` : ""}`);
+    return fetchApi<CumulativeStats>(
+      `/api/stats/cumulative${query ? `?${query}` : ""}`,
+    );
   },
 };
 
 // Companies API
 export const companiesApi = {
-  list: async (params?: { search?: string; all?: boolean }): Promise<CompanyListResponse> => {
+  list: async (params?: {
+    search?: string;
+    all?: boolean;
+  }): Promise<CompanyListResponse> => {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.set("search", params.search);
     if (params?.all) searchParams.set("all", "true");
 
     const query = searchParams.toString();
-    return fetchApi<CompanyListResponse>(`/api/companies${query ? `?${query}` : ""}`);
+    return fetchApi<CompanyListResponse>(
+      `/api/companies${query ? `?${query}` : ""}`,
+    );
   },
 
   get: async (id: number, all?: boolean): Promise<Company> => {
@@ -308,7 +355,10 @@ export const configApi = {
     return fetchApi(`/api/config/${key}`);
   },
 
-  set: async (key: string, value: string): Promise<{ key: string; value: string }> => {
+  set: async (
+    key: string,
+    value: string,
+  ): Promise<{ key: string; value: string }> => {
     return fetchApi(`/api/config/${key}`, {
       method: "PUT",
       body: JSON.stringify({ value }),
@@ -323,13 +373,18 @@ export const configApi = {
 };
 
 // Health check
-export const healthCheck = async (): Promise<{ status: string; service: string }> => {
+export const healthCheck = async (): Promise<{
+  status: string;
+  service: string;
+}> => {
   return fetchApi("/api/health");
 };
 
 // Goals API
 export const goalsApi = {
-  list: async (goalType?: string): Promise<{ goals: Goal[]; total: number }> => {
+  list: async (
+    goalType?: string,
+  ): Promise<{ goals: Goal[]; total: number }> => {
     const query = goalType ? `?goal_type=${goalType}` : "";
     return fetchApi(`/api/goals${query}`);
   },
@@ -420,7 +475,13 @@ export const bannedCompaniesApi = {
     return fetchApi(`/api/banned/check?name=${encodeURIComponent(name)}`);
   },
 
-  checkBatch: async (names: string[]): Promise<{ banned_names: string[]; total_checked: number; total_banned: number }> => {
+  checkBatch: async (
+    names: string[],
+  ): Promise<{
+    banned_names: string[];
+    total_checked: number;
+    total_banned: number;
+  }> => {
     return fetchApi("/api/banned/check-batch", {
       method: "POST",
       body: JSON.stringify(names),
@@ -448,10 +509,18 @@ export const bannedSourcesApi = {
   },
 
   check: async (name: string): Promise<BannedSourceCheckResponse> => {
-    return fetchApi(`/api/banned-sources/check?name=${encodeURIComponent(name)}`);
+    return fetchApi(
+      `/api/banned-sources/check?name=${encodeURIComponent(name)}`,
+    );
   },
 
-  checkBatch: async (names: string[]): Promise<{ banned_names: string[]; total_checked: number; total_banned: number }> => {
+  checkBatch: async (
+    names: string[],
+  ): Promise<{
+    banned_names: string[];
+    total_checked: number;
+    total_banned: number;
+  }> => {
     return fetchApi("/api/banned-sources/check-batch", {
       method: "POST",
       body: JSON.stringify(names),
@@ -465,7 +534,10 @@ export const filesApi = {
     return fetchApi(`/api/applications/${applicationId}/files`);
   },
 
-  upload: async (applicationId: number, file: File): Promise<ApplicationFile> => {
+  upload: async (
+    applicationId: number,
+    file: File,
+  ): Promise<ApplicationFile> => {
     const formData = new FormData();
     formData.append("file", file);
 
@@ -476,7 +548,9 @@ export const filesApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Unknown error" }));
       throw new ApiError(response.status, error.detail || "Upload failed");
     }
 
@@ -522,23 +596,41 @@ export const llmApi = {
     });
   },
 
-  previewJobRequirements: async (imageBase64: string): Promise<Record<string, unknown>> => {
-    const response = await fetchApi<{ data: Record<string, unknown> }>("/api/llm/preview-job-requirements", {
-      method: "POST",
-      body: JSON.stringify({ image_base64: imageBase64 }),
-    });
+  previewJobRequirements: async (
+    imageBase64: string,
+  ): Promise<Record<string, unknown>> => {
+    const response = await fetchApi<{ data: Record<string, unknown> }>(
+      "/api/llm/preview-job-requirements",
+      {
+        method: "POST",
+        body: JSON.stringify({ image_base64: imageBase64 }),
+      },
+    );
     return response.data;
   },
 
-  previewJobRequirementsFromUrl: async (jobPostingUrl: string): Promise<Record<string, unknown>> => {
-    const response = await fetchApi<{ data: Record<string, unknown> }>("/api/llm/preview-job-requirements-from-url", {
-      method: "POST",
-      body: JSON.stringify({ job_posting_url: jobPostingUrl }),
-    });
+  previewJobRequirementsFromUrl: async (
+    jobPostingUrl: string,
+  ): Promise<Record<string, unknown>> => {
+    const response = await fetchApi<{ data: Record<string, unknown> }>(
+      "/api/llm/preview-job-requirements-from-url",
+      {
+        method: "POST",
+        body: JSON.stringify({ job_posting_url: jobPostingUrl }),
+      },
+    );
     return response.data;
   },
 
-  fetchJobUrl: async (url: string): Promise<{ success: boolean; error?: string; text_preview?: string; preview_image_url?: string; raw_html?: string }> => {
+  fetchJobUrl: async (
+    url: string,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    text_preview?: string;
+    preview_image_url?: string;
+    raw_html?: string;
+  }> => {
     return fetchApi("/api/llm/fetch-job-url", {
       method: "POST",
       body: JSON.stringify({ url }),
@@ -548,7 +640,11 @@ export const llmApi = {
   analyzeFitFromUrlStream: async (
     jobPostingUrl: string,
     resumeBase64: string,
-    onProgress: (progress: { phase: number; totalPhases: number; message: string }) => void,
+    onProgress: (progress: {
+      phase: number;
+      totalPhases: number;
+      message: string;
+    }) => void,
   ): Promise<FitAnalysis> => {
     const url = `${API_URL}/api/llm/analyze-fit-from-url-stream`;
     const response = await fetch(url, {
@@ -561,7 +657,9 @@ export const llmApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Unknown error" }));
       throw new ApiError(response.status, error.detail || "Request failed");
     }
 
@@ -605,7 +703,10 @@ export const llmApi = {
     return result;
   },
 
-  analyzeFit: async (jobPostingBase64: string, resumeBase64: string): Promise<FitAnalysis> => {
+  analyzeFit: async (
+    jobPostingBase64: string,
+    resumeBase64: string,
+  ): Promise<FitAnalysis> => {
     return fetchApi("/api/llm/analyze-fit", {
       method: "POST",
       body: JSON.stringify({
@@ -618,7 +719,11 @@ export const llmApi = {
   analyzeFitStream: async (
     jobPostingBase64: string,
     resumeBase64: string,
-    onProgress: (progress: { phase: number; totalPhases: number; message: string }) => void,
+    onProgress: (progress: {
+      phase: number;
+      totalPhases: number;
+      message: string;
+    }) => void,
   ): Promise<FitAnalysis> => {
     const url = `${API_URL}/api/llm/analyze-fit-stream`;
     const response = await fetch(url, {
@@ -631,7 +736,9 @@ export const llmApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Unknown error" }));
       throw new ApiError(response.status, error.detail || "Request failed");
     }
 
@@ -697,7 +804,9 @@ export const resumeApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Unknown error" }));
       throw new ApiError(response.status, error.detail || "Upload failed");
     }
 
@@ -714,18 +823,20 @@ export const resumeApi = {
 // Job Search API
 export const jobSearchApi = {
   search: async (
-    params: {
-      keywords?: string[];
-      locations?: string[];
-      sites?: string[];
-      hours_old?: number;
-      results_wanted?: number;
-      filter_entry_level?: boolean;
-      max_experience_years?: number;
-      parallel?: boolean;
-      max_workers?: number;
-      offset?: number;
-    } | undefined,
+    params:
+      | {
+          keywords?: string[];
+          locations?: string[];
+          sites?: string[];
+          hours_old?: number;
+          results_wanted?: number;
+          filter_entry_level?: boolean;
+          max_experience_years?: number;
+          parallel?: boolean;
+          max_workers?: number;
+          offset?: number;
+        }
+      | undefined,
     onProgress: (data: {
       type: string;
       keyword?: string;
@@ -759,14 +870,16 @@ export const jobSearchApi = {
         results_wanted: params?.results_wanted || 100,
         filter_entry_level: params?.filter_entry_level ?? true,
         max_experience_years: params?.max_experience_years ?? 3,
-        parallel: params?.parallel ?? true,  // Enable parallel by default
+        parallel: params?.parallel ?? true, // Enable parallel by default
         max_workers: params?.max_workers ?? 3,
         offset: params?.offset ?? 0,
       }),
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Unknown error" }));
       throw new ApiError(response.status, error.detail || "Search failed");
     }
 
@@ -794,7 +907,10 @@ export const jobSearchApi = {
     }
   },
 
-  getSavedResults: async (hours: number = 24, includeHidden: boolean = false): Promise<SavedJobSearchResponse> => {
+  getSavedResults: async (
+    hours: number = 24,
+    includeHidden: boolean = false,
+  ): Promise<SavedJobSearchResponse> => {
     const params = new URLSearchParams();
     params.set("hours", hours.toString());
     if (includeHidden) params.set("include_hidden", "true");
@@ -805,7 +921,9 @@ export const jobSearchApi = {
     return fetchApi("/api/job-search/results/info");
   },
 
-  getUsedOffsets: async (resultsWanted: number = 100): Promise<{ offsets: number[]; suggested_next: number }> => {
+  getUsedOffsets: async (
+    resultsWanted: number = 100,
+  ): Promise<{ offsets: number[]; suggested_next: number }> => {
     return fetchApi(`/api/job-search/offsets?results_wanted=${resultsWanted}`);
   },
 
@@ -822,10 +940,15 @@ export const jobSearchApi = {
   },
 
   unmarkApplied: async (id: number): Promise<{ message: string }> => {
-    return fetchApi(`/api/job-search/results/${id}/unapply`, { method: "POST" });
+    return fetchApi(`/api/job-search/results/${id}/unapply`, {
+      method: "POST",
+    });
   },
 
-  syncAppliedStatus: async (): Promise<{ matched: number; message: string }> => {
+  syncAppliedStatus: async (): Promise<{
+    matched: number;
+    message: string;
+  }> => {
     return fetchApi("/api/job-search/results/sync-applied", { method: "POST" });
   },
 
@@ -876,7 +999,9 @@ export const jobSearchApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Unknown error" }));
       throw new ApiError(response.status, error.detail || "Analysis failed");
     }
 
@@ -904,7 +1029,9 @@ export const jobSearchApi = {
     }
   },
 
-  clearAnalysis: async (jobIds?: number[]): Promise<{ message: string; cleared_count: number }> => {
+  clearAnalysis: async (
+    jobIds?: number[],
+  ): Promise<{ message: string; cleared_count: number }> => {
     return fetchApi("/api/job-search/analyze/clear", {
       method: "POST",
       body: JSON.stringify({ job_ids: jobIds ?? null }),
@@ -916,7 +1043,11 @@ export const jobSearchApi = {
     return fetchApi("/api/job-search/filters");
   },
 
-  addFilter: async (keyword: string, filterType: "positive" | "negative", weight: number = 1.0): Promise<JobFilter> => {
+  addFilter: async (
+    keyword: string,
+    filterType: "positive" | "negative",
+    weight: number = 1.0,
+  ): Promise<JobFilter> => {
     return fetchApi("/api/job-search/filters", {
       method: "POST",
       body: JSON.stringify({ keyword, filter_type: filterType, weight }),
@@ -928,35 +1059,45 @@ export const jobSearchApi = {
   },
 
   // Bulk Actions
-  bulkHide: async (jobIds: number[]): Promise<{ message: string; count: number }> => {
+  bulkHide: async (
+    jobIds: number[],
+  ): Promise<{ message: string; count: number }> => {
     return fetchApi("/api/job-search/results/bulk/hide", {
       method: "POST",
       body: JSON.stringify({ job_ids: jobIds }),
     });
   },
 
-  bulkUnhide: async (jobIds: number[]): Promise<{ message: string; count: number }> => {
+  bulkUnhide: async (
+    jobIds: number[],
+  ): Promise<{ message: string; count: number }> => {
     return fetchApi("/api/job-search/results/bulk/unhide", {
       method: "POST",
       body: JSON.stringify({ job_ids: jobIds }),
     });
   },
 
-  bulkMarkApplied: async (jobIds: number[]): Promise<{ message: string; count: number }> => {
+  bulkMarkApplied: async (
+    jobIds: number[],
+  ): Promise<{ message: string; count: number }> => {
     return fetchApi("/api/job-search/results/bulk/apply", {
       method: "POST",
       body: JSON.stringify({ job_ids: jobIds }),
     });
   },
 
-  bulkUnmarkApplied: async (jobIds: number[]): Promise<{ message: string; count: number }> => {
+  bulkUnmarkApplied: async (
+    jobIds: number[],
+  ): Promise<{ message: string; count: number }> => {
     return fetchApi("/api/job-search/results/bulk/unapply", {
       method: "POST",
       body: JSON.stringify({ job_ids: jobIds }),
     });
   },
 
-  bulkDelete: async (jobIds: number[]): Promise<{ message: string; count: number }> => {
+  bulkDelete: async (
+    jobIds: number[],
+  ): Promise<{ message: string; count: number }> => {
     return fetchApi("/api/job-search/results/bulk/delete", {
       method: "POST",
       body: JSON.stringify({ job_ids: jobIds }),

@@ -1,14 +1,15 @@
 """Job Search Service using JobSpy for aggregating job listings"""
 
+import queue
 import re
+import threading
+from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Generator
-import pandas as pd
-import queue
-import threading
+from typing import Optional
 
+import pandas as pd
 from jobspy import scrape_jobs
 
 
@@ -18,19 +19,21 @@ class JobListing:
     title: str
     company: str
     location: str
-    date_posted: Optional[str]
     job_url: str
     site_source: str
-    description: Optional[str] = None
-    salary_min: Optional[float] = None
-    salary_max: Optional[float] = None
-    job_type: Optional[str] = None
+    company_logo: str | None = None
+    date_posted: str | None = None
+    description: str | None = None
+    salary_min: float | None = None
+    salary_max: float | None = None
+    job_type: str | None = None
     search_offset: int = 0
 
     def to_dict(self) -> dict:
         return {
             "title": self.title,
             "company": self.company,
+            "company_logo": self.company_logo,
             "location": self.location,
             "date_posted": self.date_posted,
             "job_url": self.job_url,
@@ -139,7 +142,7 @@ class JobSearchService:
     def search_jobs(
         self,
         keywords: list[str],
-        locations: Optional[list[str]] = None,
+        locations: list[str] | None = None,
         hours_old: int = 24,
         results_wanted: int = 5000,
         country: str = "USA",
@@ -219,8 +222,8 @@ class JobSearchService:
     def search_jobs_stream(
         self,
         keywords: list[str],
-        locations: Optional[list[str]] = None,
-        sites: Optional[list[str]] = None,
+        locations: list[str] | None = None,
+        sites: list[str] | None = None,
         hours_old: int = 24,
         results_wanted: int = 200,
         country: str = "USA",
@@ -245,6 +248,23 @@ class JobSearchService:
 
         total_searches = len(keywords) * len(search_locations)
         current_search = 0
+
+        # Emit all queued tasks first
+        tasks = []
+        for keyword in keywords:
+            for location in search_locations:
+                for site in (search_sites if isinstance(search_sites, list) else [search_sites]):
+                    tasks.append({
+                        "keyword": keyword,
+                        "location": location,
+                        "site": site,
+                    })
+
+        yield {
+            "type": "init",
+            "tasks": tasks,
+            "total_searches": len(tasks),
+        }
 
         for keyword in keywords:
             for location in search_locations:
@@ -316,8 +336,8 @@ class JobSearchService:
     def search_jobs_stream_parallel(
         self,
         keywords: list[str],
-        locations: Optional[list[str]] = None,
-        sites: Optional[list[str]] = None,
+        locations: list[str] | None = None,
+        sites: list[str] | None = None,
         hours_old: int = 24,
         results_wanted: int = 200,
         country: str = "USA",
@@ -351,6 +371,23 @@ class JobSearchService:
         total_searches = len(search_sites) * len(keywords) * len(search_locations)
         completed_count = [0]  # Use list for mutable reference in threads
         count_lock = threading.Lock()
+
+        # Emit all queued tasks first
+        tasks = []
+        for site in search_sites:
+            for keyword in keywords:
+                for location in search_locations:
+                    tasks.append({
+                        "keyword": keyword,
+                        "location": location,
+                        "site": site,
+                    })
+
+        results_queue.put({
+            "type": "init",
+            "tasks": tasks,
+            "total_searches": total_searches,
+        })
 
         def search_single_source(site: str):
             """
@@ -498,7 +535,7 @@ class JobSearchService:
 
         return filtered
 
-    def _extract_experience_years(self, text: str) -> Optional[int]:
+    def _extract_experience_years(self, text: str) -> int | None:
         """Extract the minimum years of experience required from text"""
         for pattern in self.EXPERIENCE_PATTERNS:
             matches = re.findall(pattern, text, re.IGNORECASE)
@@ -541,6 +578,13 @@ class JobSearchService:
 
     def _dataframe_to_listings(self, df: pd.DataFrame, offset: int = 0) -> list[JobListing]:
         """Convert JobSpy DataFrame to list of JobListing objects"""
+        import urllib.parse
+
+        from jam.core.services.config_service import ConfigService
+
+        # Fetch the publishable key from ConfigService once per batch mapping
+        logo_dev_publishable_key = ConfigService().get("logo_dev_publishable_key")
+
         listings = []
 
         for _, row in df.iterrows():
@@ -549,9 +593,7 @@ class JobSearchService:
                 date_posted = None
                 if pd.notna(row.get("date_posted")):
                     date_val = row["date_posted"]
-                    if isinstance(date_val, (datetime,)):
-                        date_posted = date_val.strftime("%Y-%m-%d")
-                    elif hasattr(date_val, "strftime"):
+                    if isinstance(date_val, (datetime,)) or hasattr(date_val, "strftime"):
                         date_posted = date_val.strftime("%Y-%m-%d")
                     else:
                         date_posted = str(date_val)
@@ -567,13 +609,46 @@ class JobSearchService:
                 # Clean and normalize description (remove extra whitespace/newlines)
                 description = None
                 if pd.notna(row.get("description")):
-                    raw_desc = str(row.get("description", ""))
-                    # Normalize whitespace: collapse multiple spaces/newlines into single space
-                    description = re.sub(r'\s+', ' ', raw_desc).strip()
+                    # Keep original formatting but strip leading/trailing whitespace
+                    description = str(row.get("description", "")).strip()
+
+                # Handle company logo
+                company_name = str(row.get("company", "Unknown Company"))
+                company_logo = None
+                # Check for logo_photo_url from JobSpy first
+                if pd.notna(row.get("logo_photo_url")) and str(row.get("logo_photo_url")).strip():
+                    company_logo = str(row.get("logo_photo_url")).strip()
+                else:
+                    # Fallback to clearbit with company_url domain
+                    company_url = None
+                    if pd.notna(row.get("company_url")) and str(row.get("company_url")).strip():
+                        company_url = str(row.get("company_url")).strip()
+                    elif pd.notna(row.get("company_url_direct")) and str(row.get("company_url_direct")).strip():
+                        company_url = str(row.get("company_url_direct")).strip()
+
+                    if company_url:
+                        try:
+                            domain = urllib.parse.urlparse(company_url).netloc
+                            # Strip www. just to be clean
+                            if domain.startswith("www."):
+                                domain = domain[4:]
+                            if domain:
+                                if logo_dev_publishable_key:
+                                    company_logo = f"/api/logos/{domain}"
+                        except Exception:
+                            pass
+
+                    # Last resort: try clearbit with company name (cleaned)
+                    if not company_logo and company_name and company_name != "Unknown Company":
+                        # Basic cleaning: remove extra spaces, non-alphanumeric, convert to lowercase
+                        clean_name = re.sub(r'[^a-zA-Z0-9]', '', company_name.lower())
+                        if clean_name and logo_dev_publishable_key:
+                            company_logo = f"/api/logos/{clean_name}.com"
 
                 listing = JobListing(
                     title=str(row.get("title", "Unknown Title")),
-                    company=str(row.get("company", "Unknown Company")),
+                    company=company_name,
+                    company_logo=company_logo,
                     location=str(row.get("location", "Unknown Location")),
                     date_posted=date_posted,
                     job_url=str(row.get("job_url", "")),

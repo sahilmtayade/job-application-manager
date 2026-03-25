@@ -28,12 +28,12 @@ export interface Application {
   url: string | null;
   notes: string | null;
   work_location: WorkLocation | null;
-  location_address: string | null;  // City/address for hybrid/onsite jobs
+  location_address: string | null; // City/address for hybrid/onsite jobs
   is_deleted: boolean;
   deleted_at: string | null;
   created_at: string | null;
   updated_at: string | null;
-  file_count: number;  // Number of attached files
+  file_count: number; // Number of attached files
 }
 
 export interface ApplicationCreate {
@@ -44,19 +44,19 @@ export interface ApplicationCreate {
   url?: string | null;
   notes?: string | null;
   work_location?: WorkLocation | null;
-  location_address?: string | null;  // City/address for hybrid/onsite jobs
+  location_address?: string | null; // City/address for hybrid/onsite jobs
   initial_status?: ApplicationStatus;
   company_id?: number | null;
 }
 
 export interface ApplicationUpdate {
-  company_name?: string | null;  // Changing company will cleanup orphaned companies
+  company_name?: string | null; // Changing company will cleanup orphaned companies
   position?: string | null;
   source?: string | null;
   url?: string | null;
   notes?: string | null;
   work_location?: WorkLocation | null;
-  location_address?: string | null;  // City/address for hybrid/onsite jobs
+  location_address?: string | null; // City/address for hybrid/onsite jobs
 }
 
 export interface ApplicationListResponse {
@@ -105,7 +105,7 @@ export interface Achievement {
   threshold: number;
   progress: number;
   unlocked: boolean;
-  reset_period?: string | null;  // "daily", "weekly", "monthly" for recurring achievements
+  reset_period?: string | null; // "daily", "weekly", "monthly" for recurring achievements
 }
 
 export interface AchievementsList {
@@ -472,6 +472,7 @@ export interface JobListing {
   id?: number | null;
   title: string;
   company: string;
+  company_logo?: string | null;
   location: string | null;
   date_posted: string | null;
   job_url: string;
@@ -490,10 +491,10 @@ export interface JobListing {
   is_hidden?: boolean;
   is_applied?: boolean;
   applied_at?: string | null;
-  applied_company?: boolean;  // True if user has applied to this company before
+  applied_company?: boolean; // True if user has applied to this company before
   matched_skills?: string[] | null;
   missing_skills?: string[] | null;
-  search_offset?: number;  // Offset used when this job was found
+  search_offset?: number; // Offset used when this job was found
 }
 
 export interface JobSearchResponse {
@@ -575,4 +576,3 @@ export interface LLMAnalysisStatus {
   available_models: string[];
   unanalyzed_count: number;
 }
-
